@@ -1,12 +1,12 @@
+nbgrader==0.5.4
+ipywidgets==7.4.2
 pandas==0.22.0
 seaborn==0.8.1
-requests==2.18.4
-ipywidgets==7.4.2
+numpy==1.14.2
+canvasapi==0.11.0
 matplotlib==2.2.2
 tqdm==4.19.8
-canvasapi==0.11.0
-numpy==1.14.2
 traitlets==4.3.2
-nbgrader==0.5.4
+requests==2.21.0
 ipython==7.2.0
 beautifulsoup4==4.7.1
