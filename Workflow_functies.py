@@ -17,6 +17,7 @@ import pandas as pd
 import seaborn as sns
 from bs4 import BeautifulSoup
 from canvasapi import Canvas
+from collections import defaultdict
 from IPython.display import Javascript, Markdown, display
 from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
                         interactive, widgets)
@@ -35,6 +36,7 @@ class Course:
         "AssignmentWeek1", "AssignmentWeek2", "AssignmentWeek3", "Deeltoets1",
         "AssignmentWeek5", "AssignmentWeek6", "AssignmentWeek7", "Deeltoets2"
     ]
+    min_dict ={"Assignments":0,"Toetsen":0}
 
     def __init__(self):
         if self.filename in os.listdir():
@@ -53,6 +55,7 @@ class Course:
                     key='')
             else:
                 self.log_in(self.canvas_id, self.url, self.key)
+
 
         config = Config()
         config.Exchange.course_id = os.getcwd().split('\\')[-1]
@@ -243,12 +246,12 @@ class Course:
             f.close()
 
         try:
-        os.makedirs("plagiaatcheck/%s/html/" % assignment_id)
-        subprocess.run([
-            "compare50", "plagiaatcheck/%s/pyfiles/*" %assignment_id, "-d",
-            "plagiaatcheck/%s/base/*" %assignment_id, "-o",
-            "plagiaatcheck/%s/html/" %assignment_id
-        ], shell=True)
+            os.makedirs("plagiaatcheck/%s/html/" % assignment_id)
+            subprocess.run([
+                "compare50", "plagiaatcheck/%s/pyfiles/*" %assignment_id, "-d",
+                "plagiaatcheck/%s/base/*" %assignment_id, "-o",
+                "plagiaatcheck/%s/html/" %assignment_id
+            ], shell=True)
         except:
              print("Oeps, voor compare50 heb je Linux of Mac nodig.")
         display(
@@ -274,7 +277,7 @@ class Course:
         print("The mean grade is {:.1f}".format(grades.mean()))
         print("The median grade is {}".format(grades.median()))
         print("Maximum van Cohen-Schotanus is {:.1f}".format(
-            grades.nlargest(max(5, int(len(grades) * 0.05))).mean()))
+            grades.nlargest(int(len(grades) * 0.05)).mean()))
         print("Het percentage onvoldoendes is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
         if 100 * sum(grades < 5.5) / len(grades) > 30:
@@ -706,41 +709,45 @@ class Course:
         UvA = round(2 * s + 1) - 1 if int(2 * s) % 2 == 0 else round(2 * s)
         UvA = 0.5 * UvA
         if s >= 4.75 and s <= 5.4999:
-            UvA = 5
-        if UvA == 5.5:
-            UvA = 6
+            return 5
+        elif UvA == 5.5:
+            return 6
         return UvA
 
     def NAV(self, row):
-        if row.Toetsen < 5 or row.Assignments < 5.5 or row.Totaal < 5.5:
+        if row.Totaal < 5.5:
             return 0
-        else:
-            return row["Totaal"]
+        for key,value in self.min_dict.items():
+            if row[key] < value:
+                return 0
+        return 1
 
     def final_grades(self):
         if self.canvas_course is None:
             print("This function only works with Canvas.")
             return
         student_dict = self.get_student_ids()
-
-        test = {
+            
+        assignment_dict = [l for l in self.canvas_course.get_assignments()]
+        dict_of_grades = {
             i.name: {
                 student_dict[j.user_id]: j.grade
                 for j in i.get_submissions() if j.user_id in student_dict
             }
-            for i in self.canvas_course.get_assignments()
+            for i in assignment_dict
         }
-
-        test2 = pd.DataFrame.from_dict(test, orient='columns').astype(float)
+        
+        test2 = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
         dict_of_weights = {}
         for i in self.canvas_course.get_assignment_groups():
             if i.group_weight > 0:
                 dict_of_weights[i.name] = i.group_weight
                 assignments = [
-                    l.name for l in self.canvas_course.get_assignments()
+                    l.name for l in assignment_dict
                     if l.assignment_group_id == i.id
                 ]
                 test2[i.name] = test2[assignments].fillna(0).mean(axis=1)
+                
         dict_of_weights = {
             x: y / sum(dict_of_weights.values())
             for x, y in dict_of_weights.items()
@@ -758,14 +765,14 @@ class Course:
         test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
         test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row), axis=1)
         temp = test2[test2["Totaal"] > 1]["Totaal"]
-        print(temp.mean(), temp.median())
+        print(temp.mean(), temp.median(), (temp > 5.5).sum()/len(temp))
         test2["cat"] = test2.TotaalNAV > 0
         test2["nieuwTotaal"] = test2.Totaal
 
-        test3 = test2.pivot_table(
+        pivot = test2.pivot_table(
             index='Totaal',
             columns='cat',
             values='nieuwTotaal',
             aggfunc=np.size)
-        test3.plot(kind='bar', stacked=True, width=1)
+        pivot.plot(kind='bar', stacked=True, width=1)
 
