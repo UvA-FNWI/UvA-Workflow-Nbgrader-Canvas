@@ -1,3 +1,4 @@
+
 import csv
 import os
 import re
@@ -13,7 +14,6 @@ import nbconvert
 import nbgrader
 import numpy as np
 import pandas as pd
-import pickle
 import seaborn as sns
 from bs4 import BeautifulSoup
 from canvasapi import Canvas
@@ -228,7 +228,7 @@ class Course:
             'release/%s/%s.ipynb' % (assignment_id, assignment_id))
         f = open(
             "plagiaatcheck/%s/base/%s.py" % (assignment_id, assignment_id),
-            "w")
+            "w", encoding="utf-8")
         f.write(test2[0])
         f.close()
 
@@ -238,19 +238,19 @@ class Course:
                                        (folder, assignment_id, assignment_id))
             f = open(
                 "plagiaatcheck/%s/pyfiles/%s_%s.py" % (assignment_id, folder,
-                                                       assignment_id), "w")
+                                                       assignment_id), "w", encoding="utf-8")
             f.write(test2[0])
             f.close()
 
-        if not sys.platform.startswith('win'):
-            os.makedirs("plagiaatcheck/%s/html/" % assignment_id)
-            subprocess.run([
-                "compare50", "plagiaatcheck/{assignment_id}/pyfiles/*", "-d",
-                "plagiaatcheck/{assignment_id}/base/", "-o",
-                "plagiaatcheck/{assignment_id}/html/"
-            ])
-        else:
-            print("Oeps, voor compare50 heb je Linux of Mac nodig.")
+        try:
+        os.makedirs("plagiaatcheck/%s/html/" % assignment_id)
+        subprocess.run([
+            "compare50", "plagiaatcheck/%s/pyfiles/*" %assignment_id, "-d",
+            "plagiaatcheck/%s/base/*" %assignment_id, "-o",
+            "plagiaatcheck/%s/html/" %assignment_id
+        ], shell=True)
+        except:
+             print("Oeps, voor compare50 heb je Linux of Mac nodig.")
         display(
             Markdown(
                 '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiaatcheck/%s/" target="_blank">Open map met plagiaatresultaten</a>' %
@@ -768,3 +768,4 @@ class Course:
             values='nieuwTotaal',
             aggfunc=np.size)
         test3.plot(kind='bar', stacked=True, width=1)
+
