@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+import json
 import shutil
 import subprocess
 import sys
@@ -25,9 +26,10 @@ from traitlets.config import Config
 
 warnings.filterwarnings('ignore')
 
+
 class Course:
     canvas_course = None
-    filename = 'workflow.config'    
+    filename = 'workflow.json'
 
     sequence = [
         "AssignmentWeek1", "AssignmentWeek2", "AssignmentWeek3", "Deeltoets1",
@@ -39,59 +41,74 @@ class Course:
             self.load_pickle()
         else:
             self.gradedict = {}
-        if self.canvas_course==None:
-            login_button = interact_manual.options(
-                manual_name="Inloggen ffs")
-            login_button(self.log_in, canvas_id='', url="https://canvas.uva.nl", key = '')
+        if self.canvas_course is None:
+            if "key" not in self.__dict__.keys() or "url" not in self.__dict__.keys(
+            ) or "canvas_id" not in self.__dict__.keys():
+                login_button = interact_manual.options(
+                    manual_name="Inloggen ffs")
+                login_button(
+                    self.log_in,
+                    canvas_id='',
+                    url="https://canvas.uva.nl",
+                    key='')
+            else:
+                self.log_in(self.canvas_id, self.url, self.key)
 
-            
         config = Config()
         config.Exchange.course_id = os.getcwd().split('\\')[-1]
         # error
         self.nbgrader_api = NbGraderAPI(config=config)
-        
-        
+
     def log_in(self, canvas_id, url, key):
         try:
             self.canvas_course = Canvas(url, key).get_course(int(canvas_id))
+            self.canvas_id = canvas_id
+            self.url = url
+            self.key = key
         except ValueError:
             print("Course id should be an integer")
         except InvalidAccessToken:
             print("Incorrect key")
         self.save_pickle()
-       
-        
 
     # https://stackoverflow.com/questions/2709800/how-to-pickle-yourself
+
     def load_pickle(self):
-        f = open(self.filename, 'rb')
-        tmp_dict = pickle.load(f)
+        f = open(self.filename, 'r')
+        tmp_dict = json.load(f)
         f.close()
 
         self.__dict__.update(tmp_dict)
 
     def save_pickle(self):
-        f = open(self.filename, 'wb')
-        temp = {k:v for k,v in self.__dict__.items () if k!= 'nbgrader_api'} 
-        pickle.dump(temp, f, 2)
+        f = open(self.filename, 'w')
+        temp = {
+            k: v for k,
+            v in self.__dict__.items() if type(v) in [
+                str,
+                list,
+                dict,
+                int,
+                float]}
+        json.dump(temp, f)
         f.close()
 
-    def update_db(self):
-        assert self.canvas_course != None
+    def update_db(self, b):
+        assert self.canvas_course is not None
         # Check which students are already in nbgrader database
-        students_already_in_db = [
-            student.id for student in self.nbgrader_api.gradebook.students
-        ]
+#         students_already_in_db = [
+#             student.id for student in self.nbgrader_api.gradebook.students
+#         ]
 
         for student in tqdm_notebook(
                 self.canvas_course.get_users(enrollment_type=['student'])):
             first_name, last_name = student.name.split(' ', 1)
             # Add students that are not yet in nbgrader database
-            if student.sis_user_id not in students_already_in_db:
-                self.nbgrader_api.gradebook.add_student(
-                    str(student.sis_user_id),
-                    first_name=first_name,
-                    last_name=last_name)
+#             if student.sis_user_id not in students_already_in_db:
+            self.nbgrader_api.gradebook.update_or_create_student(
+                str(student.sis_user_id),
+                first_name=first_name,
+                last_name=last_name)
 
     def assign(self, assignment_id):
         submission = True
@@ -105,7 +122,7 @@ class Course:
             "nbgrader", "assign", assignment_id, "--create", "--force",
             "--IncludeHeaderFooter.header=source/header.ipynb"
         ])
-        if self.canvas_course != None:
+        if self.canvas_course is not None:
             assignmentdict = {
                 assignment.name: assignment.id
                 for assignment in self.canvas_course.get_assignments()
@@ -135,35 +152,40 @@ class Course:
         ])
 
     def download_files(self, assignment_id):
-        if self.canvas_course != None:
+        if self.canvas_course is not None:
             if assignment_id in [
                     assignment.name
                     for assignment in self.canvas_course.get_assignments()
             ]:
                 # Get sis id's from students
-                student_dict = get_student_ids(self.canvas_course)
+                student_dict = self.get_student_ids()
 
                 # Get the Canvas assignment id
-                assignment = get_assignment_obj(assignment_id)
+                assignment = self.get_assignment_obj(assignment_id)
+                groups = []
 
-                for submission in tqdm_notebook(assignment.get_submissions()):
+                for submission in tqdm_notebook(assignment.get_submissions(include=['group'])):
+                    if submission.group['id'] != None:
+                        if submission.group['id'] in groups:
+                            continue
+                        else:
+                            groups.append(submission.group['id'])
                     # Check if submission has attachments
                     if 'attachments' not in submission.attributes:
                         continue
                     # Download file and give correct name
                     student_id = student_dict[submission.user_id]
                     attachment = submission.attributes["attachments"][0]
-                    directory = str(student_id) + "/" + assignment_id + "/"
-                    filename = assignment_id + ".ipynb"
+                    directory = "downloaded/" + assignment_id + "/archive/"
+                    filename = str(student_id) + '_' + assignment_id + ".ipynb"
                     urllib.request.urlretrieve(attachment['url'],
                                                directory + filename)
                     # Clear all notebooks of output to save memory
                     subprocess.run(["nbstripout", directory + filename])
-                    #!nbstripout {directory + filename}
         else:
             print("No assignment found on Canvas")
         # Move the download files to submission folder
-        if os.path_exists('downloaded/%s/' % (assignment_id)):
+        if os.path.exists('downloaded/%s/' % (assignment_id)):
             for file in os.listdir('downloaded/%s/' % (assignment_id)):
                 pass
             subprocess.run([
@@ -179,19 +201,20 @@ class Course:
         }[assignment_name]
 
     def autograde(self, assignment_id):
-        for student in tqdm_notebook(
-                sorted(
-                    self.nbgrader_api.get_submitted_students(assignment_id))):
-            print("Currently grading: %s" % student)
+        pbar = tqdm_notebook(
+            sorted(
+                self.nbgrader_api.get_submitted_students(assignment_id)))
+        for student in pbar:
+            pbar.set_description("Currently grading: %s" % student)
             student2 = "'" + student + "'"
             subprocess.run([
                 "nbgrader", "autograde", assignment_id, "--create", "--force",
-                "--quiet", student2
+                "--student=%s" % student2
             ])
         display(
             Markdown(
-                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="http://localhost:8888/formgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>'
-                % (assignment_id, assignment_id)))
+                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="http://localhost:8888/formgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>' %
+                (assignment_id, assignment_id)))
 
     def plagiatcheck(self, assignment_id):
         if os.path.exists('plagiaatcheck/%s/' % assignment_id):
@@ -230,8 +253,8 @@ class Course:
             print("Oeps, voor compare50 heb je Linux of Mac nodig.")
         display(
             Markdown(
-                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiaatcheck/%s/" target="_blank">Open map met plagiaatresultaten</a>'
-                % assignment_id))
+                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiaatcheck/%s/" target="_blank">Open map met plagiaatresultaten</a>' %
+                assignment_id))
 
     def color_grades(self, row):
         if row['interval'].right <= 5.5:
@@ -255,11 +278,8 @@ class Course:
         print("Het percentage onvoldoendes is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
         if 100 * sum(grades < 5.5) / len(grades) > 30:
-            print(
-                "Het percentage onvoldoendes is te hoog, voor meer informatie kijk op: {}"
-                .format(
-                    "http://toetsing.uva.nl/toetscyclus/analyseren/tentamenanalyse/tentamenanalyse.html#anker-percentage-geslaagde-studenten"
-                ))
+            print("Het percentage onvoldoendes is te hoog, voor meer informatie kijk op: {}" .format(
+                "http://toetsing.uva.nl/toetscyclus/analyseren/tentamenanalyse/tentamenanalyse.html#anker-percentage-geslaagde-studenten"))
         sns.set(style="darkgrid")
         bins = np.arange(1, 10, 0.5)
         interval = [pd.Interval(x, x + 0.5, closed='left') for x in bins]
@@ -310,7 +330,7 @@ class Course:
         canvasdf = pd.DataFrame(
             self.nbgrader_api.gradebook.submission_dicts(
                 assignment_name)).set_index('student')
-        if min_grade == None and max_score == None:
+        if min_grade is None and max_score is None:
             min_grade, max_score, _ = self.get_default_grade(assignment_name)
 
         canvasdf['grade'] = canvasdf['score'].apply(
@@ -325,7 +345,7 @@ class Course:
             self.create_grades_per_assignment(x)
             for x in self.graded_submissions()
         ],
-                             axis=1)
+            axis=1)
         return canvasdf
 
     def calculate_grade(self, score, min_grade, max_score):
@@ -525,16 +545,17 @@ class Course:
             fancybox=True,
             shadow=True,
             ncol=1)
-        
+
     def upload_button(self):
-        if self.canvas_course== None:
-            print("Credentials for Canvas were not provided, therefore it is impossible to upload.")
+        if self.canvas_course is None:
+            print(
+                "Credentials for Canvas were not provided, therefore it is impossible to upload.")
             return
         canvas_button = interact_manual.options(
             manual_name="Cijfers naar Canvas jwz")
         canvas_button(
             self.upload_to_canvas,
-            assignment_name=self.canvas_and_nbgrader());
+            assignment_name=self.canvas_and_nbgrader())
 
     def upload_to_canvas(self, assignment_name, message='', feedback=False):
         print(feedback, assignment_name, message)
@@ -549,7 +570,8 @@ class Course:
         student_dict = self.get_student_ids()
 
         assignment = self.get_assignment_obj(assignment_name)
-        # loop over alle submissions voor een assignment, alleen als er attachments zijn
+        # loop over alle submissions voor een assignment, alleen als er
+        # attachments zijn
         for submission in tqdm_notebook(
                 assignment.get_submissions(), desc='Submissions', leave=False):
             try:
@@ -561,7 +583,8 @@ class Course:
             grade = canvasdf.at[student_id, assignment_name]
             if np.isnan(grade):
                 continue
-            # alleen de cijfers veranderen als die op canvas lager zijn of niet bestaan
+            # alleen de cijfers veranderen als die op canvas lager zijn of niet
+            # bestaan
             if submission.attributes[
                     'score'] != grade and submission.attributes['score'] != 0:
                 if feedback:
@@ -620,10 +643,12 @@ class Course:
         css, html = soup.split('</head>', 1)
         html = re.sub(
             r'(<div class="output_subarea output_text output_error">\n<pre>\n)(?:(?!<\/div>)[\w\W])*(<span class="ansi-red-intense-fg ansi-bold">[\w\W]*?<\/pre>)',
-            r'\1\2', html)
+            r'\1\2',
+            html)
         html = re.sub(
             r'<span class="c1">### BEGIN HIDDEN TESTS<\/span>[\w\W]*?<span class="c1">### END HIDDEN TESTS<\/span>',
-            '', html)
+            '',
+            html)
         soup = css + '</head>' + html
         targetdirectory = 'canvasfeedback/%s/%s/' % (student_id, assignment_id)
         if not os.path.exists(targetdirectory):
@@ -655,7 +680,8 @@ class Course:
         for assignment_id in sorted(set(df.columns.get_level_values(0))):
             items = df[assignment_id].dropna(how='all').fillna(0)
 
-            # source: https://github.com/anthropedia/tci-stats/blob/master/tcistats/__init__.py
+            # source:
+            # https://github.com/anthropedia/tci-stats/blob/master/tcistats/__init__.py
             items_count = items.shape[1]
             variance_sum = float(items.var(axis=0, ddof=1).sum())
             total_var = float(items.sum(axis=1).var(ddof=1))
@@ -679,8 +705,10 @@ class Course:
     def TurnToUvaScores(self, s):
         UvA = round(2 * s + 1) - 1 if int(2 * s) % 2 == 0 else round(2 * s)
         UvA = 0.5 * UvA
-        if s >= 4.75 and s <= 5.4999: UvA = 5
-        if UvA == 5.5: UvA = 6
+        if s >= 4.75 and s <= 5.4999:
+            UvA = 5
+        if UvA == 5.5:
+            UvA = 6
         return UvA
 
     def NAV(self, row):
@@ -690,7 +718,7 @@ class Course:
             return row["Totaal"]
 
     def final_grades(self):
-        if self.canvas_course== None:
+        if self.canvas_course is None:
             print("This function only works with Canvas.")
             return
         student_dict = self.get_student_ids()
@@ -729,7 +757,8 @@ class Course:
             test2["Totaal"] += test2[k] * v
         test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
         test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row), axis=1)
-
+        temp = test2[test2["Totaal"] > 1]["Totaal"]
+        print(temp.mean(), temp.median())
         test2["cat"] = test2.TotaalNAV > 0
         test2["nieuwTotaal"] = test2.Totaal
 
