@@ -280,9 +280,6 @@ class Course:
             grades.nlargest(int(len(grades) * 0.05)).mean()))
         print("Het percentage onvoldoendes is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
-        if 100 * sum(grades < 5.5) / len(grades) > 30:
-            print("Het percentage onvoldoendes is te hoog, voor meer informatie kijk op: {}" .format(
-                "http://toetsing.uva.nl/toetscyclus/analyseren/tentamenanalyse/tentamenanalyse.html#anker-percentage-geslaagde-studenten"))
         sns.set(style="darkgrid")
         bins = np.arange(1, 10, 0.5)
         interval = [pd.Interval(x, x + 0.5, closed='left') for x in bins]
@@ -414,19 +411,16 @@ class Course:
             self.nbgrader_api.gradebook.submission_dicts(
                 assignment_id)).set_index('student')
         abs_max = canvasdf['max_score'].max()
+        max_score = abs_max
+        min_grade = 0
         if assignment_id in self.gradedict.keys():
             if "max_score" in self.gradedict[assignment_id].keys():
                 max_score = self.gradedict[assignment_id]["max_score"]
-            else:
-                max_score = canvasdf['max_score'].max()
+                
             if "min_grade" in self.gradedict[assignment_id].keys():
                 min_grade = self.gradedict[assignment_id]["min_grade"]
-            else:
-                min_grade = 0
 
-        else:
-            max_score = abs_max
-            min_grade = 0
+
         return min_grade, max_score, abs_max
 
     def question_visualizations(self, assignment_id):
@@ -706,21 +700,27 @@ class Course:
         return sorted(canvas & nbgrader)
 
     def TurnToUvaScores(self, s):
-        UvA = round(2 * s + 1) - 1 if int(2 * s) % 2 == 0 else round(2 * s)
-        UvA = 0.5 * UvA
-        if s >= 4.75 and s <= 5.4999:
-            return 5
-        elif UvA == 5.5:
-            return 6
-        return UvA
+        # 5.5 can't exist
+        if s > 5 and s < 6:
+            return round(s)
+        
+        # Because rounding is weird in python
+        # https://stackoverflow.com/questions/14249971/why-is-pythons-round-so-strange
+        elif int(2 * s) % 2 == 0:
+            return 0.5 * (round(2 * s + 1) - 1)
+        else:
+            return 0.5 * round(2 * s)
+  
 
     def NAV(self, row):
         if row.Totaal < 5.5:
             return 0
+        
         for key,value in self.min_dict.items():
             if row[key] < value:
                 return 0
-        return 1
+            
+        return row.Totaal
 
     def final_grades(self):
         if self.canvas_course is None:
