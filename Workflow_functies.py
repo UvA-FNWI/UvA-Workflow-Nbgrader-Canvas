@@ -331,7 +331,7 @@ class Course:
             self.nbgrader_api.gradebook.submission_dicts(
                 assignment_name)).set_index('student')
         if min_grade is None and max_score is None:
-            min_grade, max_score, _ = self.get_default_grade(assignment_name)
+            min_grade, max_score, _, _ = self.get_default_grade(assignment_name)
 
         canvasdf['grade'] = canvasdf['score'].apply(
             lambda row: self.calculate_grade(row, min_grade, max_score))
@@ -389,19 +389,19 @@ class Course:
 
     def interact_grades(self, assignment_id):
 
-        min_grade, max_score, abs_max = self.get_default_grade(assignment_id)
+        min_grade, max_score, abs_max, min_score = self.get_default_grade(assignment_id)
         interact(
             self.visualize_grades,
             assignment_id=fixed(assignment_id),
             min_grade=widgets.FloatSlider(
                 value=min_grade,
                 min=0,
-                max=10.0,
+                max=9.5,
                 step=0.5,
                 continuous_update=False),
             max_score=widgets.FloatSlider(
                 value=max_score,
-                min=1,
+                min=min_score + 0.5,
                 max=abs_max,
                 step=0.5,
                 continuous_update=False))
@@ -413,6 +413,7 @@ class Course:
         abs_max = canvasdf['max_score'].max()
         max_score = abs_max
         min_grade = 0
+        min_score = canvasdf['score'].min()
         if assignment_id in self.gradedict.keys():
             if "max_score" in self.gradedict[assignment_id].keys():
                 max_score = self.gradedict[assignment_id]["max_score"]
@@ -420,8 +421,7 @@ class Course:
             if "min_grade" in self.gradedict[assignment_id].keys():
                 min_grade = self.gradedict[assignment_id]["min_grade"]
 
-
-        return min_grade, max_score, abs_max
+        return min_grade, max_score, abs_max, min_score
 
     def question_visualizations(self, assignment_id):
         df = self.create_results_per_question()
