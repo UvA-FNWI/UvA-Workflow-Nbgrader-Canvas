@@ -98,16 +98,13 @@ class Course:
 
     def update_db(self, b):
         assert self.canvas_course is not None
-        # Check which students are already in nbgrader database
-#         students_already_in_db = [
-#             student.id for student in self.nbgrader_api.gradebook.students
-#         ]
-
+        if self.canvas_course is None:
+            print("This only works if connected to Canvas")
+            return
         for student in tqdm_notebook(
                 self.canvas_course.get_users(enrollment_type=['student'])):
             first_name, last_name = student.name.split(' ', 1)
-            # Add students that are not yet in nbgrader database
-#             if student.sis_user_id not in students_already_in_db:
+            
             self.nbgrader_api.gradebook.update_or_create_student(
                 str(student.sis_user_id),
                 first_name=first_name,
@@ -119,8 +116,6 @@ class Course:
         assert os.path.exists(
             file), "The folder name and notebook name are not equal."
         subprocess.run(["nbgrader", "update", file])
-        #!nbgrader update {file}
-        #!nbgrader assign {assignment_id} --create --force --IncludeHeaderFooter.header=source/header.ipynb
         subprocess.run([
             "nbgrader", "assign", assignment_id, "--create", "--force",
             "--IncludeHeaderFooter.header=source/header.ipynb"
@@ -185,6 +180,8 @@ class Course:
                                                directory + filename)
                     # Clear all notebooks of output to save memory
                     subprocess.run(["nbstripout", directory + filename])
+                    
+                    ### FIX DIT
         else:
             print("No assignment found on Canvas")
         # Move the download files to submission folder
@@ -195,7 +192,6 @@ class Course:
                 "nbgrader", "zip_collect", assignment_id, "--force",
                 "--log-level='INFO'"
             ])
-            #!nbgrader zip_collect {assignment_id} --force --log-level="INFO"
 
     def get_assignment_obj(self, assignment_name):
         return {
@@ -236,7 +232,7 @@ class Course:
         f.close()
 
         for folder in tqdm_notebook(
-                self.nbgrader_api.get_submitted_students(assignment_id)):
+                self.nbgrader_api.get_submitted_students(assignment_id), desc='Converting notebooks to .py'):
             test2 = test.from_filename('submitted/%s/%s/%s.ipynb' %
                                        (folder, assignment_id, assignment_id))
             f = open(
