@@ -31,12 +31,14 @@ warnings.filterwarnings('ignore')
 class Course:
     canvas_course = None
     filename = 'workflow.json'
+    
+    herkansingen = {'HerDeeltoets1':'Deeltoets1'}
 
     sequence = [
         "AssignmentWeek1", "AssignmentWeek2", "AssignmentWeek3", "Deeltoets1",
-        "AssignmentWeek5", "AssignmentWeek6", "AssignmentWeek7", "Deeltoets2"
+        "AssignmentWeek5", "AssignmentWeek6", "AssignmentWeek7", "Deeltoets2","HerDeeltoets1"
     ]
-    min_dict ={"Assignments":0,"Toetsen":0}
+    min_dict ={"Assignments":1,"Toetsen":1}
 
     def __init__(self):
         if self.filename in os.listdir():
@@ -248,6 +250,7 @@ class Course:
                 "plagiaatcheck/%s/base/*" %assignment_id, "-o",
                 "plagiaatcheck/%s/html/" %assignment_id
             ], shell=True)
+            print("plagiaatcheck/%s/pyfiles/*" %assignment_id)
         except:
              print("Oeps, voor compare50 heb je Linux of Mac nodig.")
         display(
@@ -273,7 +276,7 @@ class Course:
         print("The mean grade is {:.1f}".format(grades.mean()))
         print("The median grade is {}".format(grades.median()))
         print("Maximum van Cohen-Schotanus is {:.1f}".format(
-            grades.nlargest(int(len(grades) * 0.05)).mean()))
+            grades.nlargest(max(1,int(len(grades) * 0.05))).mean()))
         print("Het percentage onvoldoendes is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
         sns.set(style="darkgrid")
@@ -710,11 +713,11 @@ class Course:
 
     def NAV(self, row):
         if row.Totaal < 5.5:
-            return 0
+            return "NAV"
         
         for key,value in self.min_dict.items():
             if row[key] < value:
-                return 0
+                return "NAV"
             
         return row.Totaal
 
@@ -732,8 +735,12 @@ class Course:
             }
             for i in assignment_dict
         }
+
         
         test2 = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
+        
+        for k,v in self.herkansingen.items():
+            test2[v] = np.where(test2[k].isnull(), test2[v], test2[k])
         dict_of_weights = {}
         for i in self.canvas_course.get_assignment_groups():
             if i.group_weight > 0:
@@ -760,9 +767,10 @@ class Course:
             test2["Totaal"] += test2[k] * v
         test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
         test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row), axis=1)
-        temp = test2[test2["Totaal"] > 1]["Totaal"]
-        print(temp.mean(), temp.median(), (temp > 5.5).sum()/len(temp))
-        test2["cat"] = test2.TotaalNAV > 0
+        test2["TotaalNAV"].to_csv('eindcijfers.csv', header=True)
+#         temp = test2[test2["Totaal"] > 1]["Totaal"]
+#         print(temp.mean(), temp.median(), (temp > 5.5).sum()/len(temp))
+        test2["cat"] = test2.TotaalNAV != 'NAV'
         test2["nieuwTotaal"] = test2.Totaal
 
         pivot = test2.pivot_table(
