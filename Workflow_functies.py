@@ -32,13 +32,10 @@ class Course:
     canvas_course = None
     filename = 'workflow.json'
     
-    herkansingen = {'HerDeeltoets1':'Deeltoets1'}
-
-    sequence = [
-        "AssignmentWeek1", "AssignmentWeek2", "AssignmentWeek3", "Deeltoets1",
-        "AssignmentWeek5", "AssignmentWeek6", "AssignmentWeek7", "Deeltoets2","HerDeeltoets1"
-    ]
-    min_dict ={"Assignments":1,"Toetsen":1}
+    herkansingen = {}
+    groups = {}
+    sequence = []
+    min_dict = {}
 
     def __init__(self):
         if self.filename in os.listdir():
@@ -49,7 +46,7 @@ class Course:
             if "key" not in self.__dict__.keys() or "url" not in self.__dict__.keys(
             ) or "canvas_id" not in self.__dict__.keys():
                 login_button = interact_manual.options(
-                    manual_name="Inloggen ffs")
+                    manual_name="Inloggen")
                 login_button(
                     self.log_in,
                     canvas_id='',
@@ -95,7 +92,7 @@ class Course:
                 dict,
                 int,
                 float]}
-        json.dump(temp, f)
+        json.dump(temp, f,indent=4, sort_keys=True)
         f.close()
 
     def update_db(self, b):
@@ -711,13 +708,19 @@ class Course:
             return 0.5 * round(2 * s)
   
 
-    def NAV(self, row):
+    def NAV(self, row, dict_of_weights):
         if row.Totaal < 5.5:
             return "NAV"
-        
-        for key,value in self.min_dict.items():
-            if row[key] < value:
-                return "NAV"
+
+        for groups, value in self.min_dict.items():
+            if type(groups)==tuple:
+                total_weight = sum([dict_of_weights[group] for group in groups])
+                total = sum([row[groups]* dict_of_weights[group] for group in groups])
+                if total / total_weight < value:
+                    return "NAV"
+            else:
+                if row[groups] < value:
+                    return "NAV"
             
         return row.Totaal
 
@@ -740,22 +743,30 @@ class Course:
         test2 = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
         
         for k,v in self.herkansingen.items():
-            test2[v] = np.where(test2[k].isnull(), test2[v], test2[k])
+            if type(v)==list:
+                for v1 in v:
+                    test2[v1] = np.where(test2[k].isnull(), test2[v1], test2[k])
+            else:
+                test2[v] = np.where(test2[k].isnull(), test2[v], test2[k])
         dict_of_weights = {}
-        for i in self.canvas_course.get_assignment_groups():
-            if i.group_weight > 0:
-                dict_of_weights[i.name] = i.group_weight
-                assignments = [
-                    l.name for l in assignment_dict
-                    if l.assignment_group_id == i.id
-                ]
-                test2[i.name] = test2[assignments].fillna(0).mean(axis=1)
-                
+        
+        for group_name, d in self.groups.items():
+            dict_of_weights[group_name] = d['weight']
+            assignments = [
+                l.name for l in assignment_dict
+                if l.name in d['Assignments']
+            ]
+            test2[group_name] = test2[assignments].fillna(0).mean(axis=1)
+        # mogelijk wat strict
+        if sum(dict_of_weights.values()) != 100:
+            print("Weights do not add up to 100")
+            return
+           
         dict_of_weights = {
-            x: y / sum(dict_of_weights.values())
+            x: y /100
             for x, y in dict_of_weights.items()
         }
-        test2 = test2[dict_of_weights.keys()]
+        test2 = test2[self.groups.keys()]
         l = sns.pairplot(test2, kind="reg")
         for t in l.axes[:, :]:
             for v in t:
@@ -766,10 +777,8 @@ class Course:
         for k, v in dict_of_weights.items():
             test2["Totaal"] += test2[k] * v
         test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
-        test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row), axis=1)
+        test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
         test2["TotaalNAV"].to_csv('eindcijfers.csv', header=True)
-#         temp = test2[test2["Totaal"] > 1]["Totaal"]
-#         print(temp.mean(), temp.median(), (temp > 5.5).sum()/len(temp))
         test2["cat"] = test2.TotaalNAV != 'NAV'
         test2["nieuwTotaal"] = test2.Totaal
 
