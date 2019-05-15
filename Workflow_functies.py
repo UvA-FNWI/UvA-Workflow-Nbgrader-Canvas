@@ -1,4 +1,3 @@
-
 import csv
 import os
 import re
@@ -338,11 +337,12 @@ class Course:
         return canvasdf
 
     def total_df(self):
-
-        canvasdf = pd.concat([
+        list_of_dfs =[
             self.create_grades_per_assignment(x)
-            for x in self.graded_submissions()
-        ],
+            for x in self.graded_submissions()]
+        if not list_of_dfs:
+            return None
+        canvasdf = pd.concat(list_of_dfs,
             axis=1)
         return canvasdf
 
@@ -386,8 +386,11 @@ class Course:
         return df.fillna(0)
 
     def interact_grades(self, assignment_id):
-
-        min_grade, max_score, abs_max, min_score = self.get_default_grade(assignment_id)
+        score_list = self.get_default_grade(assignment_id)
+        if score_list==None:
+            print("No grades in the database")
+            return
+        min_grade, max_score, abs_max, min_score = score_list
         interact(
             self.visualize_grades,
             assignment_id=fixed(assignment_id),
@@ -407,7 +410,10 @@ class Course:
     def get_default_grade(self, assignment_id):
         canvasdf = pd.DataFrame(
             self.nbgrader_api.gradebook.submission_dicts(
-                assignment_id)).set_index('student')
+                assignment_id))
+        if 'student' not in canvasdf.columns:
+            return None
+        canvas_df = canvasdf.set_index('student')
         abs_max = canvasdf['max_score'].max()
         max_score = abs_max
         min_grade = 0
@@ -425,6 +431,9 @@ class Course:
         df = self.create_results_per_question()
         df = df.loc[df['assignment'] == assignment_id]
         df = df[df['max_score'] > 0]  # dit kan mooier pretty sure
+        if df.empty:
+            print('DataFrame is empty')
+            return
         p_df = self.p_value(df)
         rir_df = self.create_rir(df)
         combined_df = pd.concat([p_df, rir_df], axis=1)
@@ -474,6 +483,8 @@ class Course:
         return testdf
 
     def create_overview(self, df):
+        if not df:
+            return None
         df = df.fillna(0)
         testlist = []
         l = [x for x in self.sequence if x in df.columns]
@@ -512,10 +523,13 @@ class Course:
     def visualize_overview(self):
         df = self.total_df()
         overviewdf = self.create_overview(df)
+        if not df:
+            print("No grades available")
+            return None
 
         fig, axes = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
         sns.set(style="darkgrid")
-        plt.suptitle('Overview of the course')
+        plt.suptitle('Overview of the course')        
         df = df.reindex([x for x in self.sequence if x in df.columns], axis=1)
         a = sns.boxplot(data=df.mask(df < 1.0), ax=axes[0])
         a.set_title('Boxplot for each assignment')
@@ -606,6 +620,8 @@ class Course:
 
     def visualize_validity(self):
         canvas_grades = self.total_df()
+        if not canvas_grades:
+            return None
         cronbach_df = self.cronbach_alpha_plot()
         fig, axes = plt.subplots(1, 2, figsize=(15, 7))
         sns.set(style="darkgrid")
