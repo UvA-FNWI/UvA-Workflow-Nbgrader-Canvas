@@ -116,9 +116,7 @@ class Course:
             file), "The folder name and notebook name are not equal."
         subprocess.run(["nbgrader", "update", file])
         subprocess.run([
-            "nbgrader", "assign", assignment_id, "--create", "--force",
-            "--IncludeHeaderFooter.header=source/header.ipynb"
-        ])
+            "nbgrader", "assign", assignment_id, "--create", "--force"])
         if self.canvas_course is not None:
             assignmentdict = {
                 assignment.name: assignment.id
@@ -133,13 +131,15 @@ class Course:
                             'name': assignment_id,
                             'points_possible': 10,
                             'submission_types': 'online_upload',
-                            'allowed_extensions': 'ipynb'
+                            'allowed_extensions': 'ipynb',
+                            'published':'True'
                         })
                 else:
                     self.canvas_course.create_assignment(
                         assignment={
                             'name': assignment_id,
-                            'points_possible': 10
+                            'points_possible': 10,
+                            'published':'True'
                         })
 
     def nbgrader_assignments(self):
@@ -173,14 +173,16 @@ class Course:
                     # Download file and give correct name
                     student_id = student_dict[submission.user_id]
                     attachment = submission.attributes["attachments"][0]
-                    directory = "downloaded/" + assignment_id + "/archive/"
-                    filename = str(student_id) + '_' + assignment_id + ".ipynb"
+                    
+                    directory = "submitted/"+student_id+"/"+ assignment_id + "/"
+                    if not os.path.exists(directory):
+                        os.makedirs("./nested/path/to/directory")
+                            
+                    filename = assignment_id + ".ipynb"
                     urllib.request.urlretrieve(attachment['url'],
                                                directory + filename)
                     # Clear all notebooks of output to save memory
                     subprocess.run(["nbstripout", directory + filename])
-                    
-                    ### FIX DIT
         else:
             print("No assignment found on Canvas")
         # Move the download files to submission folder
@@ -563,6 +565,9 @@ class Course:
         student_dict = self.get_student_ids()
 
         assignment = self.get_assignment_obj(assignment_name)
+        # Check if assignment is published on Canvas, otherwise publish
+        if not assignment.published:
+            assignment.edit(assignment={"published": True})
         # loop over alle submissions voor een assignment, alleen als er
         # attachments zijn
         for submission in tqdm_notebook(
@@ -758,10 +763,8 @@ class Course:
             ]
             test2[group_name] = test2[assignments].fillna(0).mean(axis=1)
         # mogelijk wat strict
-        if sum(dict_of_weights.values()) != 100:
-            print("Weights do not add up to 100")
-            return
-           
+        assert sum(dict_of_weights.values()) == 100, "Weights do not add up to 100"
+        
         dict_of_weights = {
             x: y /100
             for x, y in dict_of_weights.items()
@@ -778,7 +781,7 @@ class Course:
             test2["Totaal"] += test2[k] * v
         test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
         test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
-        test2["TotaalNAV"].to_csv('eindcijfers.csv', header=True)
+        test2["TotaalNAV"].reset_index().to_csv('eindcijfers.csv', header=["Student","Final_grade"],index=False)
         test2["cat"] = test2.TotaalNAV != 'NAV'
         test2["nieuwTotaal"] = test2.Totaal
 
@@ -788,4 +791,5 @@ class Course:
             values='nieuwTotaal',
             aggfunc=np.size)
         pivot.plot(kind='bar', stacked=True, width=1)
+        print("Grades have been exported to eindcijfers.csv")
 
