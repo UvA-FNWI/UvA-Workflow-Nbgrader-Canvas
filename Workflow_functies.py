@@ -9,6 +9,7 @@ import urllib.request
 import warnings
 
 import matplotlib.pyplot as plt
+from notebook import notebookapp
 import nbconvert
 import nbgrader
 import numpy as np
@@ -93,7 +94,13 @@ class Course:
                 float]}
         json.dump(temp, f,indent=4, sort_keys=True)
         f.close()
-
+    def button_db(self):
+        db_button = Button(
+        description="Update the students in the database",
+        layout=Layout(width='300px'))
+        db_button.on_click(self.update_db)
+        return db_button
+    
     def update_db(self, b):
         assert self.canvas_course is not None
         if self.canvas_course is None:
@@ -107,7 +114,14 @@ class Course:
                 str(student.sis_user_id),
                 first_name=first_name,
                 last_name=last_name)
+            
+    def assign_button(self):
+        interact_assign = interact_manual.options(
+            manual_name="Assign de assignment in de database")
 
+        return interact_assign(
+            self.assign, assignment_id=self.nbgrader_assignments())
+    
     def assign(self, assignment_id):
         submission = True
         file = 'source/' + assignment_id + '/' + assignment_id + ".ipynb"
@@ -146,7 +160,10 @@ class Course:
             assignment
             for assignment in self.nbgrader_api.get_source_assignments()
         ])
-
+    def download_button(self):
+        return interact_manual(
+            self.download_files, assignment_id=self.nbgrader_assignments());
+    
     def download_files(self, assignment_id):
         if self.canvas_course is not None:
             if assignment_id in [
@@ -198,6 +215,10 @@ class Course:
             assignment.name: assignment
             for assignment in self.canvas_course.get_assignments()
         }[assignment_name]
+    
+    def autograde_button(self):
+        return interact_manual(
+            self.autograde, assignment_id=self.nbgrader_assignments());
 
     def autograde(self, assignment_id):
         pbar = tqdm_notebook(
@@ -210,10 +231,14 @@ class Course:
                 "nbgrader", "autograde", assignment_id, "--create", "--force",
                 "--student=%s" % student2
             ])
+        localhost_url = [x['url'] for x in notebookapp.list_running_servers() if x["notebook_dir"]==os.getcwd()][0]
         display(
             Markdown(
-                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="http://localhost:8888/formgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>' %
-                (assignment_id, assignment_id)))
+                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="%sformgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>' %
+                (localhost_url,assignment_id, assignment_id)))
+    def plagiat_button(self):
+        interact_plagiat = interact_manual.options(manual_name="Check op plagiaat")
+        return interact_plagiat(self.plagiatcheck, assignment_id=self.nbgrader_assignments());
 
     def plagiatcheck(self, assignment_id):
         if os.path.exists('plagiaatcheck/%s/' % assignment_id):
@@ -261,6 +286,9 @@ class Course:
             return 'r'
         else:
             return 'g'
+    def grades_button(self):
+        return interact(
+            self.interact_grades, assignment_id=self.graded_submissions());
 
     def visualize_grades(self, assignment_id, min_grade, max_score):
         """Creates a plot of the grades from a specific assignment"""
@@ -310,6 +338,9 @@ class Course:
             "min_grade": min_grade
         }
         display(grades_button)
+    def item_button(self):
+        return interact(
+            self.question_visualizations, assignment_id=self.graded_submissions());
 
     def update_grades(self, b):
         self.gradedict[self.curr_assignment] = self.curr_grade_settings
@@ -340,7 +371,7 @@ class Course:
         list_of_dfs =[
             self.create_grades_per_assignment(x)
             for x in self.graded_submissions()]
-        if not list_of_dfs:
+        if list_of_dfs is None:
             return None
         canvasdf = pd.concat(list_of_dfs,
             axis=1)
@@ -387,7 +418,7 @@ class Course:
 
     def interact_grades(self, assignment_id):
         score_list = self.get_default_grade(assignment_id)
-        if score_list==None:
+        if score_list is None:
             print("No grades in the database")
             return
         min_grade, max_score, abs_max, min_score = score_list
@@ -483,7 +514,7 @@ class Course:
         return testdf
 
     def create_overview(self, df):
-        if not df:
+        if df is None:
             return None
         df = df.fillna(0)
         testlist = []
@@ -523,7 +554,7 @@ class Course:
     def visualize_overview(self):
         df = self.total_df()
         overviewdf = self.create_overview(df)
-        if not df:
+        if df is None:
             print("No grades available")
             return None
 
@@ -620,7 +651,7 @@ class Course:
 
     def visualize_validity(self):
         canvas_grades = self.total_df()
-        if not canvas_grades:
+        if canvas_grades is None:
             return None
         cronbach_df = self.cronbach_alpha_plot()
         fig, axes = plt.subplots(1, 2, figsize=(15, 7))
@@ -806,6 +837,6 @@ class Course:
             columns='cat',
             values='nieuwTotaal',
             aggfunc=np.size)
-        pivot.plot(kind='bar', stacked=True, width=1)
+        pivot.plot(kind='bar', stacked=True, width=1, color= ['r', 'g'],legend=False)
         print("Grades have been exported to eindcijfers.csv")
 
