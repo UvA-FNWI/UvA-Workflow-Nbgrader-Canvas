@@ -46,7 +46,7 @@ class Course:
             if "key" not in self.__dict__.keys() or "url" not in self.__dict__.keys(
             ) or "canvas_id" not in self.__dict__.keys():
                 login_button = interact_manual.options(
-                    manual_name="Inloggen")
+                    manual_name="Log in to Canvas")
                 login_button(
                     self.log_in,
                     canvas_id='',
@@ -73,8 +73,6 @@ class Course:
             print("Incorrect key")
         self.save_pickle()
 
-    # https://stackoverflow.com/questions/2709800/how-to-pickle-yourself
-
     def load_pickle(self):
         f = open(self.filename, 'r')
         tmp_dict = json.load(f)
@@ -92,13 +90,14 @@ class Course:
                 dict,
                 int,
                 float]}
-        json.dump(temp, f,indent=4, sort_keys=True)
+        json.dump(temp, f, indent=4, sort_keys=True)
         f.close()
+        
     def button_db(self):
         db_button = Button(
-        description="Update the students in the database",
-        layout=Layout(width='300px'))
-        db_button.on_click(self.update_db)
+            description = "Update the students in the database",
+            layout = Layout(width='300px'))
+           db_button.on_click(self.update_db)
         return db_button
     
     def update_db(self, b):
@@ -123,7 +122,6 @@ class Course:
             self.assign, assignment_id=self.nbgrader_assignments())
     
     def assign(self, assignment_id):
-        submission = True
         file = 'source/' + assignment_id + '/' + assignment_id + ".ipynb"
         assert os.path.exists(
             file), "The folder name and notebook name are not equal."
@@ -138,22 +136,15 @@ class Course:
 
             # If Assignment does not exist, create assignment
             if assignment_id not in assignmentdict.keys():
-                if submission:
-                    self.canvas_course.create_assignment(
-                        assignment={
-                            'name': assignment_id,
-                            'points_possible': 10,
-                            'submission_types': 'online_upload',
-                            'allowed_extensions': 'ipynb',
-                            'published':'True'
-                        })
-                else:
-                    self.canvas_course.create_assignment(
-                        assignment={
-                            'name': assignment_id,
-                            'points_possible': 10,
-                            'published':'True'
-                        })
+                self.canvas_course.create_assignment(
+                    assignment={
+                        'name': assignment_id,
+                        'points_possible': 10,
+                        'submission_types': 'online_upload',
+                        'allowed_extensions': 'ipynb',
+                        'published':'True'
+                    })
+
 
     def nbgrader_assignments(self):
         return sorted([
@@ -190,7 +181,7 @@ class Course:
                     student_id = student_dict[submission.user_id]
                     attachment = submission.attributes["attachments"][0]
                     
-                    directory = "submitted/"+student_id+"/"+ assignment_id + "/"
+                    directory = "submitted/%s/%s/" %(student_id, assignment_id)
                     if not os.path.exists(directory):
                         os.makedirs("./nested/path/to/directory")
                             
@@ -236,22 +227,23 @@ class Course:
             Markdown(
                 '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="%sformgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>' %
                 (localhost_url,assignment_id, assignment_id)))
+        
     def plagiat_button(self):
-        interact_plagiat = interact_manual.options(manual_name="Check op plagiaat")
-        return interact_plagiat(self.plagiatcheck, assignment_id=self.nbgrader_assignments());
+        interact_plagiat = interact_manual.options(manual_name="Check for plagiarism")
+        return interact_plagiat(self.plagiarism_check, assignment_id=self.nbgrader_assignments());
 
-    def plagiatcheck(self, assignment_id):
-        if os.path.exists('plagiaatcheck/%s/' % assignment_id):
+    def plagiarism_check(self, assignment_id):
+        if os.path.exists('plagiarismcheck/%s/' % assignment_id):
             shutil.rmtree(
-                'plagiaatcheck/%s/' % assignment_id, ignore_errors=True)
-        os.makedirs('plagiaatcheck/%s/pyfiles/' % assignment_id)
-        os.makedirs('plagiaatcheck/%s/base/' % assignment_id)
+                'plagiarismcheck/%s/' % assignment_id, ignore_errors=True)
+        os.makedirs('plagiarismcheck/%s/pyfiles/' % assignment_id)
+        os.makedirs('plagiarismcheck/%s/base/' % assignment_id)
 
         test = nbconvert.PythonExporter()
         test2 = test.from_filename(
             'release/%s/%s.ipynb' % (assignment_id, assignment_id))
         f = open(
-            "plagiaatcheck/%s/base/%s.py" % (assignment_id, assignment_id),
+            "plagiarismcheck/%s/base/%s.py" % (assignment_id, assignment_id),
             "w", encoding="utf-8")
         f.write(test2[0])
         f.close()
@@ -261,24 +253,22 @@ class Course:
             test2 = test.from_filename('submitted/%s/%s/%s.ipynb' %
                                        (folder, assignment_id, assignment_id))
             f = open(
-                "plagiaatcheck/%s/pyfiles/%s_%s.py" % (assignment_id, folder,
+                "plagiarismcheck/%s/pyfiles/%s_%s.py" % (assignment_id, folder,
                                                        assignment_id), "w", encoding="utf-8")
             f.write(test2[0])
             f.close()
-
+        os.makedirs("plagiarismcheck/%s/html/" % assignment_id)
         try:
-            os.makedirs("plagiaatcheck/%s/html/" % assignment_id)
             subprocess.run([
-                "compare50", "plagiaatcheck/%s/pyfiles/*" %assignment_id, "-d",
-                "plagiaatcheck/%s/base/*" %assignment_id, "-o",
-                "plagiaatcheck/%s/html/" %assignment_id
+                "compare50", "plagiarismcheck/%s/pyfiles/*" %assignment_id, "-d",
+                "plagiarismcheck/%s/base/*" %assignment_id, "-o",
+                "plagiarismcheck/%s/html/" %assignment_id
             ], shell=True)
-            print("plagiaatcheck/%s/pyfiles/*" %assignment_id)
         except:
-             print("Oeps, voor compare50 heb je Linux of Mac nodig.")
+             print("Install check50 for plagiarism check. (This is not available on Windows)")
         display(
             Markdown(
-                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiaatcheck/%s/" target="_blank">Open map met plagiaatresultaten</a>' %
+                '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiarismcheck/%s/" target="_blank">Open folder with results of plagiarism check/a>' %
                 assignment_id))
 
     def color_grades(self, row):
@@ -286,6 +276,7 @@ class Course:
             return 'r'
         else:
             return 'g'
+        
     def grades_button(self):
         return interact(
             self.interact_grades, assignment_id=self.graded_submissions());
@@ -327,7 +318,7 @@ class Course:
             width=0.5,
             align="edge",
             color=test_grades['color'])
-        sns.kdeplot(grades, ax=ax2, clip=(1, 10))
+        sns.kdeplot(grades, ax=ax2, clip=(1, 10),legend=False)
 
         grades_button = Button(
             description="Save grades", layout=Layout(width='300px'))
@@ -338,6 +329,7 @@ class Course:
             "min_grade": min_grade
         }
         display(grades_button)
+        
     def item_button(self):
         return interact(
             self.question_visualizations, assignment_id=self.graded_submissions());
@@ -809,19 +801,20 @@ class Course:
                 if l.name in d['Assignments']
             ]
             test2[group_name] = test2[assignments].fillna(0).mean(axis=1)
+            
         # mogelijk wat strict
-        assert sum(dict_of_weights.values()) == 100, "Weights do not add up to 100"
+        assert sum(dict_of_weights.values()) == 100, "Weights do not sum up to 100"
         
         dict_of_weights = {
             x: y /100
             for x, y in dict_of_weights.items()
         }
         test2 = test2[self.groups.keys()]
-        l = sns.pairplot(test2, kind="reg")
+        l=sns.pairplot(test2, kind="reg")
         for t in l.axes[:, :]:
             for v in t:
-                v.set_ylim(1, 10)
-                v.set_xlim(1, 10)
+                v.set_ylim(0, 10)
+                v.set_xlim(0, 10)
 
         test2["Totaal"] = 0
         for k, v in dict_of_weights.items():
@@ -830,13 +823,10 @@ class Course:
         test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
         test2["TotaalNAV"].reset_index().to_csv('eindcijfers.csv', header=["Student","Final_grade"],index=False)
         test2["cat"] = test2.TotaalNAV != 'NAV'
-        test2["nieuwTotaal"] = test2.Totaal
-
-        pivot = test2.pivot_table(
-            index='Totaal',
-            columns='cat',
-            values='nieuwTotaal',
-            aggfunc=np.size)
-        pivot.plot(kind='bar', stacked=True, width=1, color= ['r', 'g'],legend=False)
+        test2["Passed"] = np.where(test2.cat, test2.Totaal, np.nan)
+        test2["Failed"] = np.where(test2.cat, np.nan, test2.Totaal)
+        
+        ax= test2[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'])
+        ax.set_xlim(xmin=0, xmax=10)
+        ax.set_xticks(np.arange(0,10.5,1))
         print("Grades have been exported to eindcijfers.csv")
-
