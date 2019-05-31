@@ -97,7 +97,7 @@ class Course:
         db_button = Button(
             description = "Update the students in the database",
             layout = Layout(width='300px'))
-           db_button.on_click(self.update_db)
+        db_button.on_click(self.update_db)
         return db_button
     
     def update_db(self, b):
