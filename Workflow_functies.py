@@ -829,4 +829,4 @@ class Course:
         ax= test2[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'])
         ax.set_xlim(xmin=0, xmax=10)
         ax.set_xticks(np.arange(0,10.5,1))
-print("Grades have been exported to eindcijfers.csv")
+        print("Grades have been exported to eindcijfers.csv")
