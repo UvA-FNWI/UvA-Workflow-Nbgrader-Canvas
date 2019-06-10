@@ -17,7 +17,7 @@ import pandas as pd
 import seaborn as sns
 from bs4 import BeautifulSoup
 from canvasapi import Canvas
-from collections import defaultdict
+from collections import defaultdict, Counter
 from IPython.display import Javascript, Markdown, display
 from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
                         interactive, widgets)
@@ -35,7 +35,7 @@ class Course:
     herkansingen = {}
     groups = {}
     sequence = []
-    min_dict = {}
+    requirements = []
 
     def __init__(self):
         if self.filename in os.listdir():
@@ -504,43 +504,91 @@ class Course:
             testdict, orient='index', columns=["Rir-waarde"])
         testdf['positive'] = testdf.apply(self.f, axis=1)
         return testdf
-
+    def replace_with_resits(self, df, resit_name):
+        assignments = self.herkansingen[resit_name]
+        if type(assignments)==list:
+            for v1 in assignments:
+                df[v1] = np.where(df[resit_name].isnull(), df[v1], df[resit_name])
+        else:
+            df[assignments] = np.where(df[resit_name].isnull(), df[assignments], df[resit_name])
+        return df
+       
+        
+        
     def create_overview(self, df):
-        if df is None:
-            return None
-        df = df.fillna(0)
+        if self.canvas_course is None:
+            if df is None:
+                return None
+            df = df.fillna(0)
+        else:    
+            student_dict = self.get_student_ids()
+            assignment_dict = [l for l in self.canvas_course.get_assignments()]
+            dict_of_grades = {
+                i.name: {
+                    student_dict[j.user_id]: j.grade
+                    for j in i.get_submissions() if j.user_id in student_dict
+                }
+                for i in assignment_dict
+            }
+            df = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
+
+        l = [x for x in self.sequence if x in df.columns]        
         testlist = []
-        l = [x for x in self.sequence if x in df.columns]
-
+        
         for n, c in enumerate(l):
-
-            kolommen_assignments = set(
-                [x for x in l[:n + 1] if x.startswith("AssignmentWeek")])
-            kolommen_deeltoets = set(
-                [x for x in l[:n + 1] if x.startswith("Deeltoets")])
-            temp = df[df[c] > 0]
-            if kolommen_deeltoets == set():
-                voldoende_deeltoets = pd.Series(
-                    [True for x in range(len(df.index))], index=df.index)
-            else:
-                voldoende_deeltoets = temp[kolommen_deeltoets].mean(
-                    axis=1) >= 5.5
-            voldoende_assignments = temp[kolommen_assignments].mean(
-                axis=1) >= 5.5
-            testlist.append(
-                [c] + [len(df) - len(temp)] +
-                [(x & y).sum()
-                 for x in [~voldoende_deeltoets, voldoende_deeltoets]
-                 for y in [~voldoende_assignments, voldoende_assignments]])
-
+            if c in self.herkansingen.keys():
+                df = self.replace_with_resits(df, c)
+                
+            onvoldoendes = []
+            for requirement in self.requirements:     
+                if type(requirement["groups"])==list:
+                    dict_of_weights = {}
+                    for group_name in requirement["groups"]:
+                        if len(set(self.groups[group_name]["Assignments"]) & set(l[:n + 1])) > 0:
+                            dict_of_weights[group_name] = self.groups[group_name]['weight']
+                            assignments = [
+                                l.name for l in assignment_dict
+                                if l.name in self.groups[group_name]["Assignments"]
+                            ]
+                            df[group_name] = df[assignments].fillna(0).mean(axis=1)
+                    dict_of_weights = {
+                        x: y /sum(dict_of_weights.values())
+                        for x, y in dict_of_weights.items()}
+                    df["Totaal"] = 0
+                    for k, v in dict_of_weights.items():
+                        df["Totaal"] += df[k] * v
+                    onvoldoendes += list(df[df["Totaal"] < requirement["min_grade"]].index)
+                    
+                else:
+                    columns = set([x for x in l[:n + 1] if x in self.groups[requirement["groups"]]["Assignments"]])
+                    if columns != set():
+                        onvoldoendes += list(df[df[columns].mean(axis=1) < requirement["min_grade"]].index)
+                        
+            dict_of_weights = {}
+            for group_name, d in self.groups.items():
+                if len(set(d["Assignments"]) & set(l[:n + 1])) > 0:
+                    dict_of_weights[group_name] = d['weight']
+                    assignments = [
+                        l.name for l in assignment_dict
+                        if l.name in d['Assignments']
+                    ]
+                    df[group_name] = df[assignments].fillna(0).mean(axis=1)
+            dict_of_weights = {
+                x: y /sum(dict_of_weights.values())
+                for x, y in dict_of_weights.items()}
+            df["Totaal"] = 0
+            for k, v in dict_of_weights.items():
+                df["Totaal"] += df[k] * v
+            onvoldoendes += list(df[df["Totaal"] < 5.5].index)
+            
+            fail_counter = Counter(Counter(onvoldoendes).values())
+            testlist.append([c, len(df) - len(set(onvoldoendes))] +[fail_counter[x] for x in range(1, len(self.requirements)+2)])
+        
+                
         testdf = pd.DataFrame(
             testlist,
             columns=[
-                "Assignment Name", "Heeft niet meegedaan aan deze opdracht",
-                "Onvoldoende voor beide onderdelen",
-                "Onvoldoende voor deeltoets", "Onvoldoende voor assignments",
-                "Voldoende voor beide onderdelen"
-            ]).set_index("Assignment Name")
+                   "Assignment Name","Pass", "Insuifficient for 1 requirement"]+["Insuifficient for %i requirements" %i for i in range(2,len(self.requirements)+2)]).set_index("Assignment Name")
         return testdf
 
     def visualize_overview(self):
@@ -558,7 +606,7 @@ class Course:
         a.set_title('Boxplot for each assignment')
         a.set_ylim(1, 10)
         sns.despine()
-        flatui = ["#808080", "#FF0000", "#FFA500", "#FFFF00", "#008000"]
+        flatui = sns.color_palette("Greens", 1)+sns.color_palette("YlOrRd", len(overviewdf)-2)
         sns.set_palette(flatui)
         b = overviewdf.plot.bar(
             stacked=True,
@@ -629,7 +677,7 @@ class Course:
                     submission={'posted_grade': str(grade)},
                     comment={'text_comment': message})
 
-        # feedbackfile verwijderen, om ruimte te besparen.
+        # Delete feedbackfiles to save memory
         if 'canvasfeedback' in os.listdir():
             shutil.rmtree('canvasfeedback/', ignore_errors=True)
         if 'feedback' in os.listdir():
@@ -756,18 +804,18 @@ class Course:
         if row.Totaal < 5.5:
             return "NAV"
 
-        for groups, value in self.min_dict.items():
-            if type(groups)==tuple:
-                total_weight = sum([dict_of_weights[group] for group in groups])
-                total = sum([row[groups]* dict_of_weights[group] for group in groups])
-                if total / total_weight < value:
+        for requirement in self.requirements:
+            if type(requirement["groups"])==list:
+                total_weight = sum([dict_of_weights[group] for group in requirement["groups"]])
+                total = sum([row[requirement["groups"]]* dict_of_weights[group] for group in requirement["groups"]])
+                if total / total_weight < requirement["min_grade"]:
                     return "NAV"
             else:
-                if row[groups] < value:
+                if row[requirement["groups"]] < requirement["min_grade"]:
                     return "NAV"
             
         return row.Totaal
-
+    
     def final_grades(self):
         if self.canvas_course is None:
             print("This function only works with Canvas.")
@@ -784,14 +832,11 @@ class Course:
         }
 
         
-        test2 = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
-        
-        for k,v in self.herkansingen.items():
-            if type(v)==list:
-                for v1 in v:
-                    test2[v1] = np.where(test2[k].isnull(), test2[v1], test2[k])
-            else:
-                test2[v] = np.where(test2[k].isnull(), test2[v], test2[k])
+        df = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
+        resits = [assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
+        for resit in resits:
+            df = self.replace_with_resits(df, resit)
+
         dict_of_weights = {}
         
         for group_name, d in self.groups.items():
@@ -800,7 +845,7 @@ class Course:
                 l.name for l in assignment_dict
                 if l.name in d['Assignments']
             ]
-            test2[group_name] = test2[assignments].fillna(0).mean(axis=1)
+            df[group_name] = df[assignments].fillna(0).mean(axis=1)
             
         # mogelijk wat strict
         assert sum(dict_of_weights.values()) == 100, "Weights do not sum up to 100"
@@ -809,24 +854,24 @@ class Course:
             x: y /100
             for x, y in dict_of_weights.items()
         }
-        test2 = test2[self.groups.keys()]
-        l=sns.pairplot(test2, kind="reg")
+        df = df[self.groups.keys()]
+        l=sns.pairplot(df, kind="reg")
         for t in l.axes[:, :]:
             for v in t:
                 v.set_ylim(0, 10)
                 v.set_xlim(0, 10)
 
-        test2["Totaal"] = 0
+        df["Totaal"] = 0
         for k, v in dict_of_weights.items():
-            test2["Totaal"] += test2[k] * v
-        test2["Totaal"] = test2["Totaal"].map(self.TurnToUvaScores)
-        test2["TotaalNAV"] = test2.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
-        test2["TotaalNAV"].reset_index().to_csv('eindcijfers.csv', header=["Student","Final_grade"],index=False)
-        test2["cat"] = test2.TotaalNAV != 'NAV'
-        test2["Passed"] = np.where(test2.cat, test2.Totaal, np.nan)
-        test2["Failed"] = np.where(test2.cat, np.nan, test2.Totaal)
+            df["Totaal"] += df[k] * v
+        df["Totaal"] = df["Totaal"].map(self.TurnToUvaScores)
+        df["TotaalNAV"] = df.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
+        df["TotaalNAV"].reset_index().to_csv('eindcijfers.csv', header=["Student","Final_grade"],index=False)
+        df["cat"] = df.TotaalNAV != 'NAV'
+        df["Passed"] = np.where(df.cat, df.Totaal, np.nan)
+        df["Failed"] = np.where(df.cat, np.nan, df.Totaal)
         
-        ax= test2[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'])
+        ax= df[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'])
         ax.set_xlim(xmin=0, xmax=10)
         ax.set_xticks(np.arange(0,10.5,1))
         print("Grades have been exported to eindcijfers.csv")
