@@ -7,6 +7,7 @@ import subprocess
 import sys
 import urllib.request
 import warnings
+import itertools
 
 import matplotlib.pyplot as plt
 from notebook import notebookapp
@@ -116,7 +117,7 @@ class Course:
             
     def assign_button(self):
         interact_assign = interact_manual.options(
-            manual_name="Assign de assignment in de database")
+            manual_name="Assign assignment")
 
         return interact_assign(
             self.assign, assignment_id=self.nbgrader_assignments())
@@ -152,7 +153,8 @@ class Course:
             for assignment in self.nbgrader_api.get_source_assignments()
         ])
     def download_button(self):
-        return interact_manual(
+        interact_download = interact_manual.options(manual_name="Download files")
+        return interact_download(
             self.download_files, assignment_id=self.nbgrader_assignments());
     
     def download_files(self, assignment_id):
@@ -208,7 +210,8 @@ class Course:
         }[assignment_name]
     
     def autograde_button(self):
-        return interact_manual(
+        interact_autograde = interact_manual.options(manual_name="Autograde")
+        return interact_autograde(
             self.autograde, assignment_id=self.nbgrader_assignments());
 
     def autograde(self, assignment_id):
@@ -292,9 +295,9 @@ class Course:
         grades = grades.reindex(index, axis='index').dropna()
         print("The mean grade is {:.1f}".format(grades.mean()))
         print("The median grade is {}".format(grades.median()))
-        print("Maximum van Cohen-Schotanus is {:.1f}".format(
+        print("Maximum of Cohen-Schotanus is {:.1f}".format(
             grades.nlargest(max(1,int(len(grades) * 0.05))).mean()))
-        print("Het percentage onvoldoendes is {:.1f}%. ".format(
+        print("The percentage insufficent grades is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
         sns.set(style="darkgrid")
         bins = np.arange(1, 10, 0.5)
@@ -538,6 +541,7 @@ class Course:
         for n, c in enumerate(l):
             if c in self.herkansingen.keys():
                 df = self.replace_with_resits(df, c)
+
                 
             onvoldoendes = []
             for requirement in self.requirements:     
@@ -582,13 +586,16 @@ class Course:
             onvoldoendes += list(df[df["Totaal"] < 5.5].index)
             
             fail_counter = Counter(Counter(onvoldoendes).values())
-            testlist.append([c, len(df) - len(set(onvoldoendes))] +[fail_counter[x] for x in range(1, len(self.requirements)+2)])
+            temp_df = df[df[c]>0]
+            did_not_participate = (set(df.index) - set(temp_df.index)) & set(onvoldoendes)
+            fail_counter = Counter(Counter([x for x in onvoldoendes if x not in did_not_participate]).values())
+            testlist.append([c, len(did_not_participate), len(df) - len(set(onvoldoendes))] + [fail_counter[x] for x in range(1, len(self.requirements) +2 )])
         
                 
         testdf = pd.DataFrame(
             testlist,
             columns=[
-                   "Assignment Name","Pass", "Insuifficient for 1 requirement"]+["Insuifficient for %i requirements" %i for i in range(2,len(self.requirements)+2)]).set_index("Assignment Name")
+                   "Assignment Name","Did not participate in this assignment &\n insuifficient for requirement(s)","Pass", "Insuifficient for 1 requirement"] + ["Insuifficient for %i requirements" %i for i in range(2,len(self.requirements) + 2)]).set_index("Assignment Name")
         return testdf
 
     def visualize_overview(self):
@@ -600,13 +607,13 @@ class Course:
 
         fig, axes = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
         sns.set(style="darkgrid")
-        plt.suptitle('Overview of the course')        
+        plt.suptitle('Overview of the course', y=0.93)        
         df = df.reindex([x for x in self.sequence if x in df.columns], axis=1)
         a = sns.boxplot(data=df.mask(df < 1.0), ax=axes[0])
         a.set_title('Boxplot for each assignment')
         a.set_ylim(1, 10)
         sns.despine()
-        flatui = sns.color_palette("Greens", 1)+sns.color_palette("YlOrRd", len(overviewdf)-2)
+        flatui = sns.color_palette("Greys", 1) + sns.color_palette("Greens", 1) + sns.color_palette("YlOrRd", len(overviewdf) - 2)
         sns.set_palette(flatui)
         b = overviewdf.plot.bar(
             stacked=True,
@@ -629,10 +636,10 @@ class Course:
     def upload_button(self):
         if self.canvas_course is None:
             print(
-                "Credentials for Canvas were not provided, therefore it is impossible to upload.")
+                "Credentials for Canvas were not provided, therefore it is not possible to upload.")
             return
         canvas_button = interact_manual.options(
-            manual_name="Cijfers naar Canvas jwz")
+            manual_name="Grades to Canvas")
         canvas_button(
             self.upload_to_canvas,
             assignment_name=self.canvas_and_nbgrader())
@@ -830,7 +837,6 @@ class Course:
             }
             for i in assignment_dict
         }
-
         
         df = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
         resits = [assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
@@ -846,16 +852,14 @@ class Course:
                 if l.name in d['Assignments']
             ]
             df[group_name] = df[assignments].fillna(0).mean(axis=1)
-            
-        # mogelijk wat strict
-        assert sum(dict_of_weights.values()) == 100, "Weights do not sum up to 100"
-        
+                    
         dict_of_weights = {
-            x: y /100
+            x: y /sum(dict_of_weights.values())
             for x, y in dict_of_weights.items()
         }
         df = df[self.groups.keys()]
         l=sns.pairplot(df, kind="reg")
+        l.fig.suptitle("Assignments groups plotted against each other", y=1.08)
         for t in l.axes[:, :]:
             for v in t:
                 v.set_ylim(0, 10)
@@ -871,7 +875,53 @@ class Course:
         df["Passed"] = np.where(df.cat, df.Totaal, np.nan)
         df["Failed"] = np.where(df.cat, np.nan, df.Totaal)
         
-        ax= df[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'])
+        ax = df[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'],title="Final grades")
         ax.set_xlim(xmin=0, xmax=10)
         ax.set_xticks(np.arange(0,10.5,1))
         print("Grades have been exported to eindcijfers.csv")
+        if set(self.canvas_and_nbgrader()).issuperset(set(itertools.chain.from_iterable(v["Assignments"] for k,v in self.groups.items()))):
+            final_grades_button = interact_manual.options(
+                manual_name="Upload final grades")
+            final_grades_button(
+                self.upload_final_grades,
+                column="", totalnav=fixed(df["TotaalNAV"]))
+            
+    def upload_final_grades(self, column, totalnav):
+        assignmentdict = {
+            assignment.name: assignment.id
+            for assignment in self.canvas_course.get_assignments()
+        }
+
+        # If Assignment does not exist, create assignment
+        if column not in assignmentdict.keys():
+            self.canvas_course.create_assignment(
+                assignment={
+                    'name': column,
+                    'points_possible': 10,
+                    'submission_types': 'online_upload',
+                    'published':'True',
+                    'omit_from_final_grade':True
+                })
+        
+        student_dict = self.get_student_ids()
+        assignment = self.get_assignment_obj(column)
+        # Check if assignment is published on Canvas, otherwise publish
+        if not assignment.published:
+            assignment.edit(assignment={"published": True})
+        # loop over alle submissions voor een assignment, alleen als er
+        # attachments zijn
+        for submission in tqdm_notebook(
+                assignment.get_submissions(), desc='Students', leave=False):
+            try:
+                student_id = student_dict[submission.user_id]
+            except Exception as e:
+                continue
+            if student_id not in list(totalnav.index.values):
+                continue
+            grade = totalnav.at[student_id]
+            if grade == "NAV":
+                grade = 0
+            if not np.isnan(grade):
+                submission.edit(submission={'posted_grade': str(grade)})
+    
+        
