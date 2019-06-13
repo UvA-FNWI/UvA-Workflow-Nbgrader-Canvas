@@ -32,7 +32,7 @@ warnings.filterwarnings('ignore')
 class Course:
     canvas_course = None
     filename = 'workflow.json'
-    
+
     herkansingen = {}
     groups = {}
     sequence = []
@@ -55,7 +55,6 @@ class Course:
                     key='')
             else:
                 self.log_in(self.canvas_id, self.url, self.key)
-
 
         config = Config()
         config.Exchange.course_id = os.getcwd().split('\\')[-1]
@@ -93,14 +92,14 @@ class Course:
                 float]}
         json.dump(temp, f, indent=4, sort_keys=True)
         f.close()
-        
+
     def button_db(self):
         db_button = Button(
-            description = "Update the students in the database",
-            layout = Layout(width='300px'))
+            description="Update the students in the database",
+            layout=Layout(width='300px'))
         db_button.on_click(self.update_db)
         return db_button
-    
+
     def update_db(self, b):
         assert self.canvas_course is not None
         if self.canvas_course is None:
@@ -109,19 +108,19 @@ class Course:
         for student in tqdm_notebook(
                 self.canvas_course.get_users(enrollment_type=['student'])):
             first_name, last_name = student.name.split(' ', 1)
-            
+
             self.nbgrader_api.gradebook.update_or_create_student(
                 str(student.sis_user_id),
                 first_name=first_name,
                 last_name=last_name)
-            
+
     def assign_button(self):
         interact_assign = interact_manual.options(
             manual_name="Assign assignment")
 
         return interact_assign(
             self.assign, assignment_id=self.nbgrader_assignments())
-    
+
     def assign(self, assignment_id):
         file = 'source/' + assignment_id + '/' + assignment_id + ".ipynb"
         assert os.path.exists(
@@ -143,20 +142,21 @@ class Course:
                         'points_possible': 10,
                         'submission_types': 'online_upload',
                         'allowed_extensions': 'ipynb',
-                        'published':'True'
+                        'published': 'True'
                     })
-
 
     def nbgrader_assignments(self):
         return sorted([
             assignment
             for assignment in self.nbgrader_api.get_source_assignments()
         ])
+
     def download_button(self):
-        interact_download = interact_manual.options(manual_name="Download files")
+        interact_download = interact_manual.options(
+            manual_name="Download files")
         return interact_download(
-            self.download_files, assignment_id=self.nbgrader_assignments());
-    
+            self.download_files, assignment_id=self.nbgrader_assignments())
+
     def download_files(self, assignment_id):
         if self.canvas_course is not None:
             if assignment_id in [
@@ -170,8 +170,10 @@ class Course:
                 assignment = self.get_assignment_obj(assignment_id)
                 groups = []
 
-                for submission in tqdm_notebook(assignment.get_submissions(include=['group'])):
-                    if submission.group['id'] != None:
+                for submission in tqdm_notebook(
+                    assignment.get_submissions(
+                        include=['group'])):
+                    if submission.group['id'] is not None:
                         if submission.group['id'] in groups:
                             continue
                         else:
@@ -182,11 +184,12 @@ class Course:
                     # Download file and give correct name
                     student_id = student_dict[submission.user_id]
                     attachment = submission.attributes["attachments"][0]
-                    
-                    directory = "submitted/%s/%s/" %(student_id, assignment_id)
+
+                    directory = "submitted/%s/%s/" % (student_id,
+                                                      assignment_id)
                     if not os.path.exists(directory):
                         os.makedirs("./nested/path/to/directory")
-                            
+
                     filename = assignment_id + ".ipynb"
                     urllib.request.urlretrieve(attachment['url'],
                                                directory + filename)
@@ -208,11 +211,11 @@ class Course:
             assignment.name: assignment
             for assignment in self.canvas_course.get_assignments()
         }[assignment_name]
-    
+
     def autograde_button(self):
         interact_autograde = interact_manual.options(manual_name="Autograde")
         return interact_autograde(
-            self.autograde, assignment_id=self.nbgrader_assignments());
+            self.autograde, assignment_id=self.nbgrader_assignments())
 
     def autograde(self, assignment_id):
         pbar = tqdm_notebook(
@@ -225,15 +228,19 @@ class Course:
                 "nbgrader", "autograde", assignment_id, "--create", "--force",
                 "--student=%s" % student2
             ])
-        localhost_url = [x['url'] for x in notebookapp.list_running_servers() if x["notebook_dir"]==os.getcwd()][0]
+        localhost_url = [x['url'] for x in notebookapp.list_running_servers(
+        ) if x["notebook_dir"] == os.getcwd()][0]
         display(
             Markdown(
                 '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="%sformgrader/gradebook/%s/%s" target="_blank">Klik hier om te manual graden</a>' %
-                (localhost_url,assignment_id, assignment_id)))
-        
+                (localhost_url, assignment_id, assignment_id)))
+
     def plagiat_button(self):
-        interact_plagiat = interact_manual.options(manual_name="Check for plagiarism")
-        return interact_plagiat(self.plagiarism_check, assignment_id=self.nbgrader_assignments());
+        interact_plagiat = interact_manual.options(
+            manual_name="Check for plagiarism")
+        return interact_plagiat(
+            self.plagiarism_check,
+            assignment_id=self.nbgrader_assignments())
 
     def plagiarism_check(self, assignment_id):
         if os.path.exists('plagiarismcheck/%s/' % assignment_id):
@@ -252,23 +259,24 @@ class Course:
         f.close()
 
         for folder in tqdm_notebook(
-                self.nbgrader_api.get_submitted_students(assignment_id), desc='Converting notebooks to .py'):
+                self.nbgrader_api.get_submitted_students(assignment_id),
+                desc='Converting notebooks to .py'):
             test2 = test.from_filename('submitted/%s/%s/%s.ipynb' %
                                        (folder, assignment_id, assignment_id))
             f = open(
-                "plagiarismcheck/%s/pyfiles/%s_%s.py" % (assignment_id, folder,
-                                                       assignment_id), "w", encoding="utf-8")
+                "plagiarismcheck/%s/pyfiles/%s_%s.py" %
+                (assignment_id, folder, assignment_id), "w", encoding="utf-8")
             f.write(test2[0])
             f.close()
         os.makedirs("plagiarismcheck/%s/html/" % assignment_id)
         try:
-            subprocess.run([
-                "compare50", "plagiarismcheck/%s/pyfiles/*" %assignment_id, "-d",
-                "plagiarismcheck/%s/base/*" %assignment_id, "-o",
-                "plagiarismcheck/%s/html/" %assignment_id
-            ], shell=True)
-        except:
-             print("Install check50 for plagiarism check. (This is not available on Windows)")
+            subprocess.run(["compare50", "plagiarismcheck/%s/pyfiles/*" %
+                            assignment_id, "-d", "plagiarismcheck/%s/base/*" %
+                            assignment_id, "-o", "plagiarismcheck/%s/html/" %
+                            assignment_id], shell=True)
+        except BaseException:
+            print(
+                "Install check50 for plagiarism check. (This is not available on Windows)")
         display(
             Markdown(
                 '<a class="btn btn-primary" style="margin-top: 10px; text-decoration: none;" href="plagiarismcheck/%s/" target="_blank">Open folder with results of plagiarism check/a>' %
@@ -279,10 +287,10 @@ class Course:
             return 'r'
         else:
             return 'g'
-        
+
     def grades_button(self):
         return interact(
-            self.interact_grades, assignment_id=self.graded_submissions());
+            self.interact_grades, assignment_id=self.graded_submissions())
 
     def visualize_grades(self, assignment_id, min_grade, max_score):
         """Creates a plot of the grades from a specific assignment"""
@@ -296,7 +304,7 @@ class Course:
         print("The mean grade is {:.1f}".format(grades.mean()))
         print("The median grade is {}".format(grades.median()))
         print("Maximum of Cohen-Schotanus is {:.1f}".format(
-            grades.nlargest(max(1,int(len(grades) * 0.05))).mean()))
+            grades.nlargest(max(1, int(len(grades) * 0.05))).mean()))
         print("The percentage insufficent grades is {:.1f}%. ".format(
             100 * sum(grades < 5.5) / len(grades)))
         sns.set(style="darkgrid")
@@ -321,7 +329,7 @@ class Course:
             width=0.5,
             align="edge",
             color=test_grades['color'])
-        sns.kdeplot(grades, ax=ax2, clip=(1, 10),legend=False)
+        sns.kdeplot(grades, ax=ax2, clip=(1, 10), legend=False)
 
         grades_button = Button(
             description="Save grades", layout=Layout(width='300px'))
@@ -332,10 +340,11 @@ class Course:
             "min_grade": min_grade
         }
         display(grades_button)
-        
+
     def item_button(self):
         return interact(
-            self.question_visualizations, assignment_id=self.graded_submissions());
+            self.question_visualizations,
+            assignment_id=self.graded_submissions())
 
     def update_grades(self, b):
         self.gradedict[self.curr_assignment] = self.curr_grade_settings
@@ -354,7 +363,8 @@ class Course:
             self.nbgrader_api.gradebook.submission_dicts(
                 assignment_name)).set_index('student')
         if min_grade is None and max_score is None:
-            min_grade, max_score, _, _ = self.get_default_grade(assignment_name)
+            min_grade, max_score, _, _ = self.get_default_grade(
+                assignment_name)
 
         canvasdf['grade'] = canvasdf['score'].apply(
             lambda row: self.calculate_grade(row, min_grade, max_score))
@@ -363,13 +373,13 @@ class Course:
         return canvasdf
 
     def total_df(self):
-        list_of_dfs =[
+        list_of_dfs = [
             self.create_grades_per_assignment(x)
             for x in self.graded_submissions()]
         if list_of_dfs is None:
             return None
         canvasdf = pd.concat(list_of_dfs,
-            axis=1)
+                             axis=1)
         return canvasdf
 
     def calculate_grade(self, score, min_grade, max_score):
@@ -447,7 +457,7 @@ class Course:
         if assignment_id in self.gradedict.keys():
             if "max_score" in self.gradedict[assignment_id].keys():
                 max_score = self.gradedict[assignment_id]["max_score"]
-                
+
             if "min_grade" in self.gradedict[assignment_id].keys():
                 min_grade = self.gradedict[assignment_id]["min_grade"]
 
@@ -507,95 +517,84 @@ class Course:
             testdict, orient='index', columns=["Rir-waarde"])
         testdf['positive'] = testdf.apply(self.f, axis=1)
         return testdf
+
     def replace_with_resits(self, df, resit_name):
         assignments = self.herkansingen[resit_name]
-        if type(assignments)==list:
+        if isinstance(assignments, list):
             for v1 in assignments:
-                df[v1] = np.where(df[resit_name].isnull(), df[v1], df[resit_name])
+                df[v1] = np.where(
+                    df[resit_name].isnull(), df[v1], df[resit_name])
         else:
-            df[assignments] = np.where(df[resit_name].isnull(), df[assignments], df[resit_name])
+            df[assignments] = np.where(
+                df[resit_name].isnull(),
+                df[assignments],
+                df[resit_name])
         return df
-       
-        
-        
+
     def create_overview(self, df):
         if self.canvas_course is None:
             if df is None:
                 return None
+            df.dropna(1, how='all', inplace=True)
             df = df.fillna(0)
-        else:    
-            student_dict = self.get_student_ids()
-            assignment_dict = [l for l in self.canvas_course.get_assignments()]
-            dict_of_grades = {
-                i.name: {
-                    student_dict[j.user_id]: j.grade
-                    for j in i.get_submissions() if j.user_id in student_dict
-                }
-                for i in assignment_dict
-            }
-            df = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
+        else:
+            df = self.create_canvas_grades_df()
+            df.dropna(1, how='all', inplace=True)
 
-        l = [x for x in self.sequence if x in df.columns]        
+        l = [x for x in self.sequence if x in df.columns]
         testlist = []
-        
+
         for n, c in enumerate(l):
             if c in self.herkansingen.keys():
                 df = self.replace_with_resits(df, c)
 
-                
             onvoldoendes = []
-            for requirement in self.requirements:     
-                if type(requirement["groups"])==list:
-                    dict_of_weights = {}
+            for requirement in self.requirements:
+                if isinstance(requirement["groups"], list):
+
+                    assignments = set()
                     for group_name in requirement["groups"]:
-                        if len(set(self.groups[group_name]["Assignments"]) & set(l[:n + 1])) > 0:
-                            dict_of_weights[group_name] = self.groups[group_name]['weight']
-                            assignments = [
-                                l.name for l in assignment_dict
-                                if l.name in self.groups[group_name]["Assignments"]
-                            ]
-                            df[group_name] = df[assignments].fillna(0).mean(axis=1)
-                    dict_of_weights = {
-                        x: y /sum(dict_of_weights.values())
-                        for x, y in dict_of_weights.items()}
-                    df["Totaal"] = 0
-                    for k, v in dict_of_weights.items():
-                        df["Totaal"] += df[k] * v
-                    onvoldoendes += list(df[df["Totaal"] < requirement["min_grade"]].index)
+                        assignments |= set(
+                            self.groups[group_name]["Assignments"])
+                    weighted_total = self.add_total_to_df(
+                        df[assignments & set(l[:n + 1])])[0]
                     
+                    onvoldoendes += list(weighted_total[weighted_total
+                                            < requirement["min_grade"]].index)
+
                 else:
-                    columns = set([x for x in l[:n + 1] if x in self.groups[requirement["groups"]]["Assignments"]])
+                    columns = set(
+                        [x for x in l[:n + 1] if x in self.groups[requirement["groups"]]["Assignments"]])
                     if columns != set():
-                        onvoldoendes += list(df[df[columns].mean(axis=1) < requirement["min_grade"]].index)
-                        
-            dict_of_weights = {}
-            for group_name, d in self.groups.items():
-                if len(set(d["Assignments"]) & set(l[:n + 1])) > 0:
-                    dict_of_weights[group_name] = d['weight']
-                    assignments = [
-                        l.name for l in assignment_dict
-                        if l.name in d['Assignments']
-                    ]
-                    df[group_name] = df[assignments].fillna(0).mean(axis=1)
-            dict_of_weights = {
-                x: y /sum(dict_of_weights.values())
-                for x, y in dict_of_weights.items()}
-            df["Totaal"] = 0
-            for k, v in dict_of_weights.items():
-                df["Totaal"] += df[k] * v
-            onvoldoendes += list(df[df["Totaal"] < 5.5].index)
-            
+                        onvoldoendes += list(df[df[columns].mean(axis=1)
+                                                < requirement["min_grade"]].index)
+
+            weighted_total = self.add_total_to_df(df[l[:n + 1]])[0]
+            onvoldoendes += list(weighted_total[weighted_total < 5.5].index)
+
             fail_counter = Counter(Counter(onvoldoendes).values())
-            temp_df = df[df[c]>0]
-            did_not_participate = (set(df.index) - set(temp_df.index)) & set(onvoldoendes)
-            fail_counter = Counter(Counter([x for x in onvoldoendes if x not in did_not_participate]).values())
-            testlist.append([c, len(did_not_participate), len(df) - len(set(onvoldoendes))] + [fail_counter[x] for x in range(1, len(self.requirements) +2 )])
-        
-                
+            temp_df = df[df[c] > 0]
+            did_not_participate = (set(df.index) -
+                                   set(temp_df.index)) & set(onvoldoendes)
+            fail_counter = Counter(
+                Counter([x for x in onvoldoendes if x not in did_not_participate]).values())
+            testlist.append([c, len(df) - len(set(onvoldoendes))] + [fail_counter[x]
+                                                                     for x in range(1, len(self.requirements) + 2,)] + [len(did_not_participate)])
+
         testdf = pd.DataFrame(
             testlist,
             columns=[
-                   "Assignment Name","Did not participate in this assignment &\n insuifficient for requirement(s)","Pass", "Insuifficient for 1 requirement"] + ["Insuifficient for %i requirements" %i for i in range(2,len(self.requirements) + 2)]).set_index("Assignment Name")
+                "Assignment Name",
+                "Pass",
+                "Insuifficient for 1 requirement"] +
+            [
+                "Insuifficient for %i requirements" %
+                i for i in range(
+                    2,
+                    len(
+                        self.requirements) +
+                    2)] +
+            ["Did not participate in this assignment &\n insuifficient for requirement(s)"]).set_index("Assignment Name")
         return testdf
 
     def visualize_overview(self):
@@ -607,13 +606,16 @@ class Course:
 
         fig, axes = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
         sns.set(style="darkgrid")
-        plt.suptitle('Overview of the course', y=0.93)        
+        plt.suptitle('Overview of the course', y=0.93)
         df = df.reindex([x for x in self.sequence if x in df.columns], axis=1)
         a = sns.boxplot(data=df.mask(df < 1.0), ax=axes[0])
         a.set_title('Boxplot for each assignment')
         a.set_ylim(1, 10)
         sns.despine()
-        flatui = sns.color_palette("Greys", 1) + sns.color_palette("Greens", 1) + sns.color_palette("YlOrRd", len(overviewdf) - 2)
+        flatui = sns.color_palette("Greens",
+                                   1) + sns.color_palette("YlOrRd",
+                                                          len(overviewdf.columns) - 2) + sns.color_palette("Greys",
+                                                                                                           1)
         sns.set_palette(flatui)
         b = overviewdf.plot.bar(
             stacked=True,
@@ -798,94 +800,105 @@ class Course:
         # 5.5 can't exist
         if s > 5 and s < 6:
             return round(s)
-        
+
         # Because rounding is weird in python
         # https://stackoverflow.com/questions/14249971/why-is-pythons-round-so-strange
         elif int(2 * s) % 2 == 0:
             return 0.5 * (round(2 * s + 1) - 1)
         else:
             return 0.5 * round(2 * s)
-  
 
     def NAV(self, row, dict_of_weights):
         if row.Totaal < 5.5:
             return "NAV"
 
         for requirement in self.requirements:
-            if type(requirement["groups"])==list:
-                total_weight = sum([dict_of_weights[group] for group in requirement["groups"]])
-                total = sum([row[requirement["groups"]]* dict_of_weights[group] for group in requirement["groups"]])
+            if isinstance(requirement["groups"], list):
+                total_weight = sum([dict_of_weights[group]
+                                    for group in requirement["groups"]])
+                total = sum([row[group] * dict_of_weights[group]
+                             for group in requirement["groups"]])
                 if total / total_weight < requirement["min_grade"]:
                     return "NAV"
             else:
                 if row[requirement["groups"]] < requirement["min_grade"]:
                     return "NAV"
-            
+
         return row.Totaal
-    
-    def final_grades(self):
-        if self.canvas_course is None:
-            print("This function only works with Canvas.")
-            return
-        student_dict = self.get_student_ids()
-            
+
+    def add_total_to_df(self, df):
+        dict_of_weights = {}
         assignment_dict = [l for l in self.canvas_course.get_assignments()]
+        for group_name, d in self.groups.items():
+            if len(set(d["Assignments"]) & set(df.columns)) > 0:
+                dict_of_weights[group_name] = d['weight']
+                assignments = [
+                    l.name for l in assignment_dict
+                    if l.name in d['Assignments']
+                ]
+                df[group_name] = df[set(df.columns) & set(
+                    assignments)].fillna(0).mean(axis=1)
+
+        dict_of_weights = {
+            x: y / sum(dict_of_weights.values())
+            for x, y in dict_of_weights.items()}
+        df["Totaal"] = 0
+        for k, v in dict_of_weights.items():
+            df["Totaal"] += df[k] * v
+        return df["Totaal"], dict_of_weights
+
+    def create_canvas_grades_df(self):
+        student_dict = self.get_student_ids()
+
+        assignment_list = [l for l in self.canvas_course.get_assignments()]
         dict_of_grades = {
             i.name: {
                 student_dict[j.user_id]: j.grade
                 for j in i.get_submissions() if j.user_id in student_dict
             }
-            for i in assignment_dict
+            for i in assignment_list
         }
-        
-        df = pd.DataFrame.from_dict(dict_of_grades, orient='columns').astype(float)
-        resits = [assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
+
+        return pd.DataFrame.from_dict(
+            dict_of_grades, orient='columns').astype(float)
+
+    def final_grades(self):
+        if self.canvas_course is None:
+            print("This function only works with Canvas.")
+            return
+        df = self.create_canvas_grades_df()
+        resits = [
+            assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
         for resit in resits:
             df = self.replace_with_resits(df, resit)
+        df.dropna(1, how='all', inplace=True)
 
-        dict_of_weights = {}
-        
-        for group_name, d in self.groups.items():
-            dict_of_weights[group_name] = d['weight']
-            assignments = [
-                l.name for l in assignment_dict
-                if l.name in d['Assignments']
-            ]
-            df[group_name] = df[assignments].fillna(0).mean(axis=1)
-                    
-        dict_of_weights = {
-            x: y /sum(dict_of_weights.values())
-            for x, y in dict_of_weights.items()
-        }
-        df = df[self.groups.keys()]
-        l=sns.pairplot(df, kind="reg")
-        l.fig.suptitle("Assignments groups plotted against each other", y=1.08)
-        for t in l.axes[:, :]:
-            for v in t:
-                v.set_ylim(0, 10)
-                v.set_xlim(0, 10)
+        df["Totaal"], dict_of_weights = self.add_total_to_df(df)
 
-        df["Totaal"] = 0
-        for k, v in dict_of_weights.items():
-            df["Totaal"] += df[k] * v
         df["Totaal"] = df["Totaal"].map(self.TurnToUvaScores)
-        df["TotaalNAV"] = df.apply(lambda row: self.NAV(row, dict_of_weights), axis=1)
-        df["TotaalNAV"].reset_index().to_csv('eindcijfers.csv', header=["Student","Final_grade"],index=False)
+        df["TotaalNAV"] = df.apply(
+            lambda row: self.NAV(
+                row, dict_of_weights), axis=1)
+        df["TotaalNAV"].reset_index().to_csv(
+            'eindcijfers.csv', header=[
+                "Student", "Final_grade"], index=False)
         df["cat"] = df.TotaalNAV != 'NAV'
         df["Passed"] = np.where(df.cat, df.Totaal, np.nan)
         df["Failed"] = np.where(df.cat, np.nan, df.Totaal)
-        
-        ax = df[["Passed","Failed"]].plot.hist(bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'],title="Final grades")
+
+        ax = df[["Passed", "Failed"]].plot.hist(
+            bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'], title="Final grades")
         ax.set_xlim(xmin=0, xmax=10)
-        ax.set_xticks(np.arange(0,10.5,1))
+        ax.set_xticks(np.arange(0, 10.5, 1))
         print("Grades have been exported to eindcijfers.csv")
-        if set(self.canvas_and_nbgrader()).issuperset(set(itertools.chain.from_iterable(v["Assignments"] for k,v in self.groups.items()))):
+        if set(self.canvas_and_nbgrader()).issuperset(set(
+                itertools.chain.from_iterable(v["Assignments"] for k, v in self.groups.items()))):
             final_grades_button = interact_manual.options(
                 manual_name="Upload final grades")
             final_grades_button(
                 self.upload_final_grades,
                 column="", totalnav=fixed(df["TotaalNAV"]))
-            
+
     def upload_final_grades(self, column, totalnav):
         assignmentdict = {
             assignment.name: assignment.id
@@ -899,10 +912,10 @@ class Course:
                     'name': column,
                     'points_possible': 10,
                     'submission_types': 'online_upload',
-                    'published':'True',
-                    'omit_from_final_grade':True
+                    'published': 'True',
+                    'omit_from_final_grade': True
                 })
-        
+
         student_dict = self.get_student_ids()
         assignment = self.get_assignment_obj(column)
         # Check if assignment is published on Canvas, otherwise publish
@@ -923,5 +936,3 @@ class Course:
                 grade = 0
             if not np.isnan(grade):
                 submission.edit(submission={'posted_grade': str(grade)})
-    
-        
