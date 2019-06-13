@@ -4,6 +4,7 @@ import re
 import json
 import shutil
 import subprocess
+import nbformat
 import sys
 import urllib.request
 import warnings
@@ -13,6 +14,7 @@ import matplotlib.pyplot as plt
 from notebook import notebookapp
 import nbconvert
 import nbgrader
+from nbconvert.preprocessors import CellExecutionError, ExecutePreprocessor
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -119,15 +121,39 @@ class Course:
             manual_name="Assign assignment")
 
         return interact_assign(
-            self.assign, assignment_id=self.nbgrader_assignments())
+            self.assign, assignment_id=self.nbgrader_assignments(), run_to_check_for_errors=False)
 
-    def assign(self, assignment_id):
+    def assign(self, assignment_id, run_to_check_for_errors):
         file = 'source/' + assignment_id + '/' + assignment_id + ".ipynb"
         assert os.path.exists(
             file), "The folder name and notebook name are not equal."
         subprocess.run(["nbgrader", "update", file])
         subprocess.run([
             "nbgrader", "assign", assignment_id, "--create", "--force"])
+        if run_to_check_for_errors:
+            with open("nbgrader_config.py") as f:
+                contents = f.read()
+                timer = 30
+                if "ExecutePreprocessor.timeout" in contents:
+                    timer=min(int(x) for x in re.findall(r'ExecutePreprocessor\.timeout\s*=\s*(\d*)', contents))
+            ep = ExecutePreprocessor(timeout=timer, kernel_name='python3')
+            with open(file,encoding='utf-8') as f:
+                nb = nbformat.read(f, as_version=4)
+                try:
+                    out = ep.preprocess(nb,{'metadata': {'path': 'source/%s/' %assignment_id}})
+                except CellExecutionError:
+                    out = None
+                    msg = 'Error executing the notebook "%s".\n' % file
+                    msg += 'See notebook for the traceback.'
+                    print(msg)
+                except TimeoutError:
+                    msg = "Timeout (after %s seconds) in on of the cells\n" %timer
+                    msg += 'Consider changing the timeout in nbgrader_config.py'
+                    print(msg)
+                finally:
+                    with open(file, mode='w', encoding='utf-8') as f:
+                        nbformat.write(nb, f)
+
         if self.canvas_course is not None:
             assignmentdict = {
                 assignment.name: assignment.id
@@ -376,8 +402,9 @@ class Course:
         list_of_dfs = [
             self.create_grades_per_assignment(x)
             for x in self.graded_submissions()]
-        if list_of_dfs is None:
+        if list_of_dfs==[]:
             return None
+        print(list_of_dfs)
         canvasdf = pd.concat(list_of_dfs,
                              axis=1)
         return canvasdf
@@ -701,7 +728,8 @@ class Course:
     def visualize_validity(self):
         canvas_grades = self.total_df()
         if canvas_grades is None:
-            return None
+            print("No grades available")
+            return
         cronbach_df = self.cronbach_alpha_plot()
         fig, axes = plt.subplots(1, 2, figsize=(15, 7))
         sns.set(style="darkgrid")
@@ -867,6 +895,9 @@ class Course:
             print("This function only works with Canvas.")
             return
         df = self.create_canvas_grades_df()
+        if df.empty:
+            print("No grades available")
+            return
         resits = [
             assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
         for resit in resits:
