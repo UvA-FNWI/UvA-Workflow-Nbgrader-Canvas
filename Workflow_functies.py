@@ -188,7 +188,7 @@ class Course:
                     directory = "submitted/%s/%s/" % (student_id,
                                                       assignment_id)
                     if not os.path.exists(directory):
-                        os.makedirs("./nested/path/to/directory")
+                        os.makedirs(directory)
 
                     filename = assignment_id + ".ipynb"
                     urllib.request.urlretrieve(attachment['url'],
