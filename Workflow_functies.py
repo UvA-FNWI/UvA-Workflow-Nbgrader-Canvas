@@ -27,7 +27,6 @@ from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
 from nbgrader.apps import NbGraderAPI
 from tqdm import tqdm, tqdm_notebook  # Progress bar
 from traitlets.config import Config
-import time
 warnings.filterwarnings('ignore')
 
 
