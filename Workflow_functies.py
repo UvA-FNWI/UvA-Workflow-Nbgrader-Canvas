@@ -21,13 +21,13 @@ import seaborn as sns
 from bs4 import BeautifulSoup
 from canvasapi import Canvas
 from collections import defaultdict, Counter
-from IPython.display import Javascript, Markdown, display
+from IPython.display import Javascript, Markdown, display, clear_output
 from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
                         interactive, widgets)
 from nbgrader.apps import NbGraderAPI
 from tqdm import tqdm, tqdm_notebook  # Progress bar
 from traitlets.config import Config
-
+import time
 warnings.filterwarnings('ignore')
 
 
@@ -48,13 +48,7 @@ class Course:
         if self.canvas_course is None:
             if "key" not in self.__dict__.keys() or "url" not in self.__dict__.keys(
             ) or "canvas_id" not in self.__dict__.keys():
-                login_button = interact_manual.options(
-                    manual_name="Log in to Canvas")
-                login_button(
-                    self.log_in,
-                    canvas_id='',
-                    url="https://canvas.uva.nl",
-                    key='')
+                change_canvas_credentials()
             else:
                 self.log_in(self.canvas_id, self.url, self.key)
 
@@ -62,18 +56,48 @@ class Course:
         config.Exchange.course_id = os.getcwd().split('\\')[-1]
         # error
         self.nbgrader_api = NbGraderAPI(config=config)
+        
+    def change_canvas_credentials(self, canvas_id='',url="https://canvas.uva.nl", key=''):
+        if "key" in self.__dict__.keys():
+            key=self.key
+        if "url" in self.__dict__.keys():
+            url=self.url
+        if "canvas_id" in self.__dict__.keys():
+            canvas_id=self.canvas_id
+        login_button = interact_manual.options(
+                    manual_name="Log in to Canvas")
+        login_button(
+            self.log_in,
+            canvas_id=canvas_id,
+            url=url,
+            key=key)
+        
 
     def log_in(self, canvas_id, url, key):
         try:
-            self.canvas_course = Canvas(url, key).get_course(int(canvas_id))
+            canvas_obj = Canvas(url, key)
+            self.canvas_course = canvas_obj.get_course(int(canvas_id))
             self.canvas_id = canvas_id
             self.url = url
             self.key = key
+            self.save_pickle()
+
+            print("Logged in succesfully")
+            print("Course name: %s\nCourse code: %s" %(self.canvas_course.name,self.canvas_course.course_code))
+            print("Canvas course id: %s" %canvas_id)
+            print("Username: %s" %(canvas_obj.get_current_user().name))
+            change_login_button = Button(
+                        description="Change course/user",
+                        layout=Layout(width='300px'))
+            change_login_button.on_click(self.change_canvas_credentials)
+            display(change_login_button)
         except ValueError:
             print("Course id should be an integer")
+            self.change_canvas_credentials()
         except InvalidAccessToken:
             print("Incorrect key")
-        self.save_pickle()
+            change_canvas_credentials()
+
 
     def load_pickle(self):
         f = open(self.filename, 'r')
@@ -404,7 +428,6 @@ class Course:
             for x in self.graded_submissions()]
         if list_of_dfs==[]:
             return None
-        print(list_of_dfs)
         canvasdf = pd.concat(list_of_dfs,
                              axis=1)
         return canvasdf
