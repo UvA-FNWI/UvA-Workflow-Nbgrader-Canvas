@@ -53,7 +53,6 @@ class Course:
 
         config = Config()
         config.Exchange.course_id = os.getcwd().split('\\')[-1]
-        # error
         self.nbgrader_api = NbGraderAPI(config=config)
         
     def change_canvas_credentials(self, canvas_id='',url="https://canvas.uva.nl", key=''):
@@ -70,6 +69,75 @@ class Course:
             canvas_id=canvas_id,
             url=url,
             key=key)
+        
+    def show_course_settings(self):
+        endlist = []
+        enddict = defaultdict(list)
+        for k,v in self.herkansingen.items():
+            if type(v)==list:
+                for a in v:
+                    enddict[a].append(k)
+            elif type(v)==str:
+                enddict[v].append(k)
+
+        for k,v in self.groups.items():
+            weight = round(v["weight"]/ len(v["Assignments"]),2)
+            for a in v["Assignments"]:
+                if a in self.sequence:
+                    index = self.sequence.index(a)
+                else:
+                    index = np.nan
+                if a in enddict:
+                    resits = [x for x in self.sequence if x in enddict[a]]
+                else:
+                    resits = np.nan
+                if a in self.gradedict:
+                    min_grade = self.gradedict[a]['min_grade']
+                    max_score = self.gradedict[a]['max_score']
+                else:
+                    if a in (x.name for x in self.nbgrader_api.gradebook.assignments):
+                        min_grade = 0
+                        max_score = self.nbgrader_api.gradebook.find_assignment(a).max_score
+                    else:
+                        min_grade = np.nan
+                        max_score = np.nan
+                endlist.append([k,a,index,resits, weight, min_grade, max_score])
+
+        for a in self.herkansingen:
+            if a in self.gradedict:
+                min_grade = self.gradedict[a]['min_grade']
+                max_score = self.gradedict[a]['max_score']
+            else:
+                if a in (x.name for x in self.nbgrader_api.gradebook.assignments):
+                    min_grade = 0
+                    max_score = self.nbgrader_api.gradebook.find_assignment(a).max_score
+                else:
+                    min_grade = np.nan
+                    max_score = np.nan
+
+            if a in self.sequence:
+                index = self.sequence.index(a)
+            else:
+                index = np.nan
+            if a in enddict:
+                resits = enddict[a]
+            else:
+                resits = np.nan
+            endlist.append(["Resits",a, index,resits, np.nan, min_grade, max_score])
+
+        df = pd.DataFrame(endlist,columns = ["Group", "Assignment","Order","Resits", "Weight","Minimal Grade","Score needed for a 10"])
+        display(df.set_index(["Group","Assignment"]))
+        print("To pass a course a student has to")
+        for r in self.requirements:
+            if type(r["groups"]) == str:
+                print("\thave a minimal mean grade of {:.1f} for {}".format(r["min_grade"],r["groups"]))
+            elif type(r["groups"]) == list:
+                if len(r["groups"]) == 1:
+                    print("\thave a minimal mean grade of {:.1f} for {}".format(r["min_grade"],r["groups"]))
+                elif len(r["groups"]) > 1:
+                    print("\thave a minimal mean grade of {:.1f} for {} and {}".format(r["min_grade"],", ".join(r["groups"][:-1]), r["groups"][-1]))
+        print("\thave a minimal weighted mean grade of 5.5 for all groups")
+
         
 
     def log_in(self, canvas_id, url, key):
@@ -412,7 +480,7 @@ class Course:
             self.nbgrader_api.gradebook.submission_dicts(
                 assignment_name)).set_index('student')
         if min_grade is None and max_score is None:
-            min_grade, max_score, _, _ = self.get_default_grade(
+            min_grade, max_score, _= self.get_default_grade(
                 assignment_name)
 
         canvasdf['grade'] = canvasdf['score'].apply(
@@ -475,7 +543,7 @@ class Course:
         if score_list is None:
             print("No grades in the database")
             return
-        min_grade, max_score, abs_max, min_score = score_list
+        min_grade, max_score, abs_max = score_list
         interact(
             self.visualize_grades,
             assignment_id=fixed(assignment_id),
@@ -487,30 +555,27 @@ class Course:
                 continuous_update=False),
             max_score=widgets.FloatSlider(
                 value=max_score,
-                min=min_score + 0.5,
+                min=0.5,
                 max=abs_max,
                 step=0.5,
                 continuous_update=False))
 
     def get_default_grade(self, assignment_id):
-        canvasdf = pd.DataFrame(
-            self.nbgrader_api.gradebook.submission_dicts(
-                assignment_id))
-        if 'student' not in canvasdf.columns:
+        assignment = self.nbgrader_api.gradebook.find_assignment(assignment_id)
+        if assignment.num_submissions < 1:
             return None
-        canvas_df = canvasdf.set_index('student')
-        abs_max = canvasdf['max_score'].max()
-        max_score = abs_max
+        abs_max = assignment.max_score
         min_grade = 0
-        min_score = canvasdf['score'].min()
         if assignment_id in self.gradedict.keys():
             if "max_score" in self.gradedict[assignment_id].keys():
                 max_score = self.gradedict[assignment_id]["max_score"]
 
             if "min_grade" in self.gradedict[assignment_id].keys():
                 min_grade = self.gradedict[assignment_id]["min_grade"]
+        else:
+            max_score = abs_max
 
-        return min_grade, max_score, abs_max, min_score
+        return min_grade, max_score, abs_max
 
     def question_visualizations(self, assignment_id):
         df = self.create_results_per_question()
