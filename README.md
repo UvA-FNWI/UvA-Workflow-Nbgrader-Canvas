@@ -1,5 +1,8 @@
 # Workflow
 
+How to install?
+`pip install workflow_uva`
+
 # Workflow.json (Config file)
 A few things can or need to be added to `workflow.json`:
 * sequence, a list of assignments in order
