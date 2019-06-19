@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
 
-     name='Workflow',  
+     name='workflow_uva',  
 
      version='0.1',
 
