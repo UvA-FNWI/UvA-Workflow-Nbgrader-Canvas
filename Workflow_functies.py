@@ -34,7 +34,7 @@ class Course:
     canvas_course = None
     filename = 'workflow.json'
 
-    herkansingen = {}
+    resits = {}
     groups = {}
     sequence = []
     requirements = []
@@ -73,7 +73,7 @@ class Course:
     def show_course_settings(self):
         endlist = []
         enddict = defaultdict(list)
-        for k,v in self.herkansingen.items():
+        for k,v in self.resits.items():
             if type(v)==list:
                 for a in v:
                     enddict[a].append(k)
@@ -81,8 +81,8 @@ class Course:
                 enddict[v].append(k)
 
         for k,v in self.groups.items():
-            weight = round(v["weight"]/ len(v["Assignments"]),2)
-            for a in v["Assignments"]:
+            weight = round(v["weight"]/ len(v["assignments"]),2)
+            for a in v["assignments"]:
                 if a in self.sequence:
                     index = self.sequence.index(a)
                 else:
@@ -103,7 +103,7 @@ class Course:
                         max_score = np.nan
                 endlist.append([k,a,index,resits, weight, min_grade, max_score])
 
-        for a in self.herkansingen:
+        for a in self.resits:
             if a in self.gradedict:
                 min_grade = self.gradedict[a]['min_grade']
                 max_score = self.gradedict[a]['max_score']
@@ -633,7 +633,7 @@ class Course:
         return testdf
 
     def replace_with_resits(self, df, resit_name):
-        assignments = self.herkansingen[resit_name]
+        assignments = self.resits[resit_name]
         if isinstance(assignments, list):
             for v1 in assignments:
                 df[v1] = np.where(
@@ -666,7 +666,7 @@ class Course:
         testlist = []
 
         for n, c in enumerate(l):
-            if c in self.herkansingen.keys():
+            if c in self.resits.keys():
                 df = self.replace_with_resits(df, c)
 
             onvoldoendes = []
@@ -676,7 +676,7 @@ class Course:
                     assignments = set()
                     for group_name in requirement["groups"]:
                         assignments |= set(
-                            self.groups[group_name]["Assignments"])
+                            self.groups[group_name]["assignments"])
                     weighted_total = self.add_total_to_df(
                         df[assignments & set(l[:n + 1])])[0]
                     
@@ -685,7 +685,7 @@ class Course:
 
                 else:
                     columns = set(
-                        [x for x in l[:n + 1] if x in self.groups[requirement["groups"]]["Assignments"]])
+                        [x for x in l[:n + 1] if x in self.groups[requirement["groups"]]["assignments"]])
                     if columns != set():
                         onvoldoendes += list(df[df[columns].mean(axis=1)
                                                 < requirement["min_grade"]].index)
@@ -952,11 +952,11 @@ class Course:
         dict_of_weights = {}
         assignment_dict = [l for l in self.canvas_course.get_assignments()]
         for group_name, d in self.groups.items():
-            if len(set(d["Assignments"]) & set(df.columns)) > 0:
+            if len(set(d["assignments"]) & set(df.columns)) > 0:
                 dict_of_weights[group_name] = d['weight']
                 assignments = [
                     l.name for l in assignment_dict
-                    if l.name in d['Assignments']
+                    if l.name in d['assignments']
                 ]
                 df[group_name] = df[set(df.columns) & set(
                     assignments)].fillna(0).mean(axis=1)
@@ -993,7 +993,7 @@ class Course:
             print("No grades available")
             return
         resits = [
-            assignment for assignment in self.sequence if assignment in self.herkansingen.keys()]
+            assignment for assignment in self.sequence if assignment in self.resits.keys()]
         for resit in resits:
             df = self.replace_with_resits(df, resit)
         df.dropna(1, how='all', inplace=True)
@@ -1017,7 +1017,7 @@ class Course:
         ax.set_xticks(np.arange(0, 10.5, 1))
         print("Grades have been exported to final_grades.csv")
         if set(self.canvas_and_nbgrader()).issuperset(set(
-                itertools.chain.from_iterable(v["Assignments"] for k, v in self.groups.items()))):
+                itertools.chain.from_iterable(v["assignments"] for k, v in self.groups.items()))):
             final_grades_button = interact_manual.options(
                 manual_name="Upload final grades")
             final_grades_button(
