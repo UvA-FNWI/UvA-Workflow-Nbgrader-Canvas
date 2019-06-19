@@ -10,7 +10,7 @@ setuptools.setup(
 
      version='0.1',
 
-     scripts=['workflow'] ,
+     scripts=['workflow_uva'] ,
 
      author="Jasper van der Heide",
 
