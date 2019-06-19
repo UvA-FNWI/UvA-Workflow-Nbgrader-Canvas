@@ -125,7 +125,7 @@ class Course:
                 resits = np.nan
             endlist.append(["Resits",a, index,resits, np.nan, min_grade, max_score])
 
-        df = pd.DataFrame(endlist,columns = ["Group", "Assignment","Order","Resits", "Weight","Minimal Grade","Score needed for a 10"])
+        df = pd.DataFrame(endlist,columns = ["Group", "Assignment","Order","Resits", "Weight","Minimal Grade","Points needed for a 10"])
         display(df.set_index(["Group","Assignment"]))
         print("To pass a course a student has to")
         for r in self.requirements:
@@ -580,7 +580,7 @@ class Course:
     def question_visualizations(self, assignment_id):
         df = self.create_results_per_question()
         df = df.loc[df['assignment'] == assignment_id]
-        df = df[df['max_score'] > 0]  # dit kan mooier pretty sure
+        df = df[df['max_score'] > 0]
         if df.empty:
             print('DataFrame is empty')
             return
@@ -652,8 +652,15 @@ class Course:
             df.dropna(1, how='all', inplace=True)
             df = df.fillna(0)
         else:
-            df = self.create_canvas_grades_df()
-            df.dropna(1, how='all', inplace=True)
+            canvas_df = self.create_canvas_grades_df()
+            canvas_df.dropna(1, how='all', inplace=True)
+            if canvas_df.empty or canvas_df.sum().sum()==0:
+                return None
+            for column in df.dropna(1, how='all').columns:
+                if column not in canvas_df.columns:
+                    canvas_df = canvas_df.join(df[column].fillna(0), how='left')
+                
+            df = canvas_df
 
         l = [x for x in self.sequence if x in df.columns]
         testlist = []
@@ -721,7 +728,7 @@ class Course:
         fig, axes = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
         sns.set(style="darkgrid")
         plt.suptitle('Overview of the course', y=0.93)
-        df = df.reindex([x for x in self.sequence if x in df.columns], axis=1)
+        df = df.reindex([x for x in self.sequence if x in overviewdf.index], axis=1)
         a = sns.boxplot(data=df.mask(df < 1.0), ax=axes[0])
         a.set_title('Boxplot for each assignment')
         a.set_ylim(1, 10)
@@ -998,7 +1005,7 @@ class Course:
             lambda row: self.NAV(
                 row, dict_of_weights), axis=1)
         df["TotaalNAV"].reset_index().to_csv(
-            'eindcijfers.csv', header=[
+            'final_grades.csv', header=[
                 "Student", "Final_grade"], index=False)
         df["cat"] = df.TotaalNAV != 'NAV'
         df["Passed"] = np.where(df.cat, df.Totaal, np.nan)
@@ -1008,7 +1015,7 @@ class Course:
             bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'], title="Final grades")
         ax.set_xlim(xmin=0, xmax=10)
         ax.set_xticks(np.arange(0, 10.5, 1))
-        print("Grades have been exported to eindcijfers.csv")
+        print("Grades have been exported to final_grades.csv")
         if set(self.canvas_and_nbgrader()).issuperset(set(
                 itertools.chain.from_iterable(v["Assignments"] for k, v in self.groups.items()))):
             final_grades_button = interact_manual.options(
