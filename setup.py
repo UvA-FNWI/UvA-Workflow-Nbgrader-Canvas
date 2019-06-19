@@ -10,8 +10,6 @@ setuptools.setup(
 
      version='0.1',
 
-     scripts=['workflow_uva'] ,
-
      author="Jasper van der Heide",
 
      author_email="jaspervdh96@hotmail.com",
@@ -29,6 +27,7 @@ setuptools.setup(
      classifiers=[
 
          "Programming Language :: Python :: 3",
+		 "License :: OSI Approved :: MIT License",
          "Operating System :: OS Independent"
 
      ],
