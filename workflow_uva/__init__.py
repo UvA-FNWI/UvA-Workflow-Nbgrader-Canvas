@@ -410,6 +410,9 @@ class Course:
             self.interact_grades, assignment_id=self.graded_submissions())
 
     def visualize_grades(self, assignment_id, min_grade, max_score):
+        if assignment_id==None:
+            print("No assignment selected")
+            return
         """Creates a plot of the grades from a specific assignment"""
         grades = self.create_grades_per_assignment(assignment_id, min_grade,
                                                    max_score)[assignment_id]
