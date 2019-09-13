@@ -804,7 +804,7 @@ class Course:
             if submission.attributes[
                     'score'] != grade and submission.attributes['score'] != 0:
                 if feedback:
-                    feedbackfile = create_feedback(student_id, assignment_name)
+                    feedbackfile = self.create_feedback(student_id, assignment_name)
                     submission.upload_comment(feedbackfile)
                 submission.edit(
                     submission={'posted_grade': str(grade)},
