@@ -22,9 +22,8 @@ A few things can or need to be added to `workflow.json`:
             "weight": 20
         }}`
 * resits, a dict of resits, and which assignments it replaces
-  * It should be a dict with as keys the names of the resits, and as values the name of the assignment it replaces or a list of names.
+  * It should be a dict with as key the name of the resit, and as value the list of assignments that are replaces by the resit
   * For example: `"resits": {
-        "ResitExam1": "Exam1",
         "OverallResit": [
             "Exam1",
             "Exam2"
