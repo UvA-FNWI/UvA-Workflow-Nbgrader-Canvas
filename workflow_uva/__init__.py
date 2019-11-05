@@ -282,7 +282,7 @@ class Course:
                         nb, {'metadata': {'path': 'source/%s/' % assignment_id}})
                 except CellExecutionError:
                     out = None
-                    print("Error executing the notebook %s .\nSee notebook for the traceback." % file
+                    print("Error executing the notebook %s .\nSee notebook for the traceback." % file)
                 except TimeoutError:
                     print("Timeout (after %s seconds) in on of the cells" % timer)
                     print("Consider changing the timeout in nbgrader_config.py")
