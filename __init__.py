@@ -116,8 +116,8 @@ class Course:
         
         for resit in self.resits:
             if resit in self.gradedict:
-                min_grade = self.gradedict[a]['min_grade']
-                max_score = self.gradedict[a]['max_score']
+                min_grade = self.gradedict[resit]['min_grade']
+                max_score = self.gradedict[resit]['max_score']
             else:
                 if resit in (
                         x.name for x in self.nbgrader_api.gradebook.assignments):
@@ -398,7 +398,7 @@ class Course:
         
         for student in pbar:
             pbar.set_description("Currently grading: %s" % student)
-            
+            subprocess.run(["nbgrader", "update", "submitted/%s/%s/%s.ipynb" %(student, assignment_id, assignment_id)])
             subprocess.run([
                 "nbgrader", "autograde", assignment_id, "--create", "--force",
                 "--student=%s" %("'" + student + "'")
@@ -431,7 +431,6 @@ class Course:
         # Create folders
         os.makedirs("plagiarismcheck/%s/pyfiles/" % assignment_id)
         os.makedirs("plagiarismcheck/%s/base/"% assignment_id)
-        os.makedirs("plagiarismcheck/%s/html/" % assignment_id)
         
         # Convert and move release to plagiarismcheck folder
         exporter = nbconvert.PythonExporter()
@@ -461,7 +460,8 @@ class Course:
             subprocess.run(["compare50", "plagiarismcheck/%s/pyfiles/*" %
                             assignment_id, "-d", "plagiarismcheck/%s/base/*" %
                             assignment_id, "-o", "plagiarismcheck/%s/html/" %
-                            assignment_id], shell=True)
+                            assignment_id])
+
         except BaseException:
             print(
                 "Install check50 for plagiarism check. (This is not available on Windows)")
@@ -721,14 +721,16 @@ class Course:
         
         # Plot the p value
         sns.barplot(
-            x="P value", y="Question", data=combined_df, color='b',
+            x="P value", y="Question", data=combined_df, color='b',orient='h',order=list(p_df.index),
             ax=axes[0]).set_xlim(0, 1.0)
         
         # Plot the rir value
+        #combined_df.plot.barh(x='Question', y='Rir value', xlim=(-1,1), ax=axes[1])
         sns.barplot(
             x="Rir value",
             y="Question",
             data=combined_df,
+            orient='h',
             ax=axes[1],
             palette=combined_df["positive"]).set_xlim(-1.0, 1.0)
 
@@ -785,7 +787,7 @@ class Course:
             canvas_df.dropna(1, how='all', inplace=True)
             if canvas_df.empty or canvas_df.sum().sum() == 0:
                 return None
-            
+
             # Add columns to canvas_df that are only in nbgrader columns
             for column in df.dropna(1, how='all').columns:
                 if column not in canvas_df.columns:
@@ -793,7 +795,6 @@ class Course:
                         df[column].fillna(0), how='left')
 
             df = canvas_df
-
         order_of_assignments = [assignment for assignment in self.sequence if assignment in df.columns]
         list_of_categories = []
 
@@ -803,10 +804,9 @@ class Course:
             if assignment in self.resits.keys():
                 df = self.replace_with_resits(df, assignment)
 
-            insuifficent = set()
+            insuifficent = []
             for requirement in self.requirements:
                 if isinstance(requirement['groups'], list):
-
                     assignments = set()
                     for group_name in requirement['groups']:
                         assignments |= set(
@@ -814,26 +814,26 @@ class Course:
                     weighted_total = self.add_total_to_df(
                         df[assignments & set(order_of_assignments[:n + 1])])[0]
 
-                    insuifficent |= set(
+                    insuifficent += list(
                         weighted_total[weighted_total < requirement['min_grade']].index)
 
                 else:
                     columns = set(
                         [x for x in order_of_assignments[:n + 1] if x in self.groups[requirement['groups']]['assignments']])
                     if columns != set():
-                        insuifficent |= set(df[df[columns].mean(axis=1)
+                        insuifficent += list(df[df[columns].mean(axis=1)
                                                 < requirement['min_grade']].index)
 
             weighted_total = self.add_total_to_df(df[order_of_assignments[:n + 1]])[0]
-            insuifficent |= set(weighted_total[weighted_total < 5.5].index)
+            insuifficent += list(weighted_total[weighted_total < 5.5].index)
 
             fail_counter = Counter(Counter(insuifficent).values())
             temp_df = df[df[assignment] > 0]
             did_not_participate = (set(df.index) -
-                                   set(temp_df.index)) & insuifficent
+                                   set(temp_df.index)) & set(insuifficent)
             fail_counter = Counter(
                 Counter([x for x in insuifficent if x not in did_not_participate]).values())
-            list_of_categories.append([assignment, len(df) - len(insuifficent)] + [fail_counter[x]
+            list_of_categories.append([assignment, len(df) - len(set(insuifficent))] + [fail_counter[x]
                                                                                for x in range(1, len(self.requirements) + 2,)] + [len(did_not_participate)])
 
         df = pd.DataFrame(
@@ -905,10 +905,12 @@ class Course:
     def upload_to_canvas(self, assignment_name, message='', feedback=False):
         # If chosen, create feedback files
         if feedback:
+            print("Creating feedbackfiles")
             subprocess.run([
                 "nbgrader", "feedback", "--quiet", "--force",
                 "--assignment=%s" % assignment_name
             ])
+            print("Feedbackfiles created")
 
         # Get the latest grades from the gradebook
         canvasdf = self.total_df()
