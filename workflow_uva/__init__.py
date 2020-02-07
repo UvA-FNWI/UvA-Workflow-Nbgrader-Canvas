@@ -1168,7 +1168,7 @@ class Course:
         
         # Plot histogram of final grades
         ax = df[["Passed", "Failed"]].plot.hist(
-            bins=np.arange(-0.25, 10.5, 0.5), colors=['green', 'red'], title="Final grades")
+            bins=np.arange(-0.25, 10.5, 0.5), color=['green', 'red'], title="Final grades")
         ax.set_xlim(xmin=0, xmax=10)
         ax.set_xticks(np.arange(0, 10.5, 1))
         print("Grades have been exported to final_grades.csv")
