@@ -25,7 +25,7 @@ from IPython.display import Javascript, Markdown, display, clear_output
 from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
                         interactive, widgets)
 from nbgrader.apps import NbGraderAPI
-from tqdm import tqdm, tqdm_notebook  # Progress bar
+from tqdm.notebook import tqdm  # Progress bar
 from traitlets.config import Config
 warnings.filterwarnings('ignore')
 
@@ -226,7 +226,7 @@ class Course:
 
     def update_db(self, b):
         """Update the student information from canvas into nbgrader database"""
-        for student in tqdm_notebook(
+        for student in tqdm(
                 self.canvas_course.get_users(enrollment_type=['student'])):
             first_name, last_name = student.name.split(' ', 1)
 
@@ -335,7 +335,7 @@ class Course:
                 assignment = self.get_assignment_obj(assignment_id)
                 groups = []
 
-                for submission in tqdm_notebook(
+                for submission in tqdm(
                     assignment.get_submissions(
                         include=['group'])):
                     if submission.group['id'] is not None:
@@ -392,7 +392,7 @@ class Course:
         """Autograde assignment"""
         
         # Creates a custom progressbar
-        pbar = tqdm_notebook(
+        pbar = tqdm(
             sorted(
                 self.nbgrader_api.get_submitted_students(assignment_id)))
         
@@ -443,7 +443,7 @@ class Course:
         target_file.close()
         
         # Convert and move submitted assignments to plagiarismcheck folder
-        for student in tqdm_notebook(
+        for student in tqdm(
                 self.nbgrader_api.get_submitted_students(assignment_id),
                 desc="Converting notebooks to .py"):
             source_file = exporter.from_filename(
@@ -923,9 +923,8 @@ class Course:
         if not assignment.published:
             assignment.edit(assignment={"published": True})
                           
-        # loop over alle submissions voor een assignment, alleen als er
-        # attachments zijn
-        for submission in tqdm_notebook(
+        # Loop over all submissions with attachment
+        for submission in tqdm(
                 assignment.get_submissions(), desc='Submissions', leave=False):
             try:
                 student_id = student_dict[submission.user_id]
@@ -1207,7 +1206,7 @@ class Course:
         if not assignment.published:
             assignment.edit(assignment={"published": True})
                                           
-        for submission in tqdm_notebook(
+        for submission in tqdm(
                 assignment.get_submissions(), desc='Students', leave=False):
             try:
                 student_id = student_dict[submission.user_id]
