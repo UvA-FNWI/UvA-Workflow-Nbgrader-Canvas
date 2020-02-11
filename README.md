@@ -1,7 +1,12 @@
 # Workflow
 
-How to install?
+How to install and use?
+
 `pip install workflow_uva`
+
+Place Workflow.ipynb and workflow.json in the nbgrader folder.
+
+
 
 # Workflow.json (Config file)
 A few things can or need to be added to `workflow.json`:
