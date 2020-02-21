@@ -38,12 +38,11 @@ class Course:
     groups = {}
     sequence = []
     requirements = []
+    gradedict = {}
 
     def __init__(self):
         if self.filename in os.listdir():
             self.load_pickle()
-        else:
-            self.gradedict = {}
         if self.canvas_course is None:
             if "key" not in self.__dict__.keys() or "url" not in self.__dict__.keys(
             ) or "canvas_id" not in self.__dict__.keys():
@@ -363,6 +362,9 @@ class Course:
                     
                     # Clear all notebooks of output to save memory
                     subprocess.run(["nbstripout", directory + filename])
+                    
+                    # Update to right nbgrader metadata
+                    subprocess.run(["nbgrader", "update", directory + filename])
         else:
             print("No assignment found on Canvas")
             
@@ -398,7 +400,6 @@ class Course:
         
         for student in pbar:
             pbar.set_description("Currently grading: %s" % student)
-            subprocess.run(["nbgrader", "update", "submitted/%s/%s/%s.ipynb" %(student, assignment_id, assignment_id)])
             subprocess.run([
                 "nbgrader", "autograde", assignment_id, "--create", "--force",
                 "--student=%s" %("'" + student + "'")
@@ -786,14 +787,15 @@ class Course:
             # Get grades from canvas
             canvas_df = self.create_canvas_grades_df()
             canvas_df.dropna(1, how='all', inplace=True)
-            if canvas_df.empty or canvas_df.sum().sum() == 0:
-                return None
+
 
             # Add columns to canvas_df that are only in nbgrader columns
             for column in df.dropna(1, how='all').columns:
                 if column not in canvas_df.columns:
                     canvas_df = canvas_df.join(
                         df[column].fillna(0), how='left')
+            if canvas_df.empty or canvas_df.sum().sum() == 0:
+                return None
 
             df = canvas_df
         order_of_assignments = [assignment for assignment in self.sequence if assignment in df.columns]
@@ -808,8 +810,10 @@ class Course:
             insuifficent = []
             for requirement in self.requirements:
                 if isinstance(requirement['groups'], list):
+
                     assignments = set()
                     for group_name in requirement['groups']:
+                        assert group_name in self.groups.keys(), "%s is a group listed in requirements, but is not listed as a group in workflow.json" %group_name
                         assignments |= set(
                             self.groups[group_name]['assignments'])
                     weighted_total = self.add_total_to_df(
@@ -819,6 +823,7 @@ class Course:
                         weighted_total[weighted_total < requirement['min_grade']].index)
 
                 else:
+                    assert requirement['groups'] in self.groups.keys(), "%s is a group listed in requirements, but is not listed as a group in workflow.json" %requirement['groups']
                     columns = set(
                         [x for x in order_of_assignments[:n + 1] if x in self.groups[requirement['groups']]['assignments']])
                     if columns != set():
@@ -826,12 +831,14 @@ class Course:
                                                 < requirement['min_grade']].index)
 
             weighted_total = self.add_total_to_df(df[order_of_assignments[:n + 1]])[0]
-            insuifficent += list(weighted_total[weighted_total < 5.5].index)
-
+            insuifficent += list(weighted_total[weighted_total.fillna(0) < 5.5].index)
+            
             fail_counter = Counter(Counter(insuifficent).values())
-            temp_df = df[df[assignment] > 0]
+            print(fail_counter)
+            participated_df = df[df[assignment] > 0]
+
             did_not_participate = (set(df.index) -
-                                   set(temp_df.index)) & set(insuifficent)
+                                   set(participated_df.index)) & set(insuifficent)
             fail_counter = Counter(
                 Counter([x for x in insuifficent if x not in did_not_participate]).values())
             list_of_categories.append([assignment, len(df) - len(set(insuifficent))] + [fail_counter[x]
@@ -1113,10 +1120,12 @@ class Course:
                 ]
                 df[group_name] = df[set(df.columns) & set(
                     assignments)].fillna(0).mean(axis=1)
-
-        dict_of_weights = {
-            x: y / sum(dict_of_weights.values())
-            for x, y in dict_of_weights.items()}
+        if len(self.groups) == 0:
+            dict_of_weights = {assignment : 1 / len(df.columns) for assignment in df.columns}
+        else:
+            dict_of_weights = {
+                x: y / sum(dict_of_weights.values())
+                for x, y in dict_of_weights.items()}
         df['Total'] = 0
         for k, v in dict_of_weights.items():
             df['Total'] += df[k] * v
