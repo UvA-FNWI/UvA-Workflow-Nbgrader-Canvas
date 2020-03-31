@@ -46,9 +46,10 @@ def get_assignment_obj(assignment_name):
         for assignment in canvas_course.get_assignments()
     }[assignment_name]
 
-def download_files(assignment_file, assignment_folder, canvas_name):
+def download_files(assignment_file,file_with_students):
         """Downloads all the files from Canvas for an assignment
         If none were found on Canvas, uses zip collect in the download folder"""
+        list_of_students_in_section = pd.read_excel(file_with_students)['UvAnetID'].to_list()
         if canvas_course is not None:
             if canvas_name in [
                     assignment.name
@@ -76,6 +77,7 @@ def download_files(assignment_file, assignment_folder, canvas_name):
                         
                     # Download file and give correct name
                     student_id = student_dict[submission.user_id]
+                    if student_id
                     attachment = submission.attributes["attachments"][0]
 
                     directory = "submitted/%s/%s/" % (student_id,
@@ -92,4 +94,4 @@ def download_files(assignment_file, assignment_folder, canvas_name):
         else:
             print("No assignment found on Canvas")
             
-download_files("AssignmentWeek1", "AssignmentWeek1", "AssignmentWeek1")
+download_files("AssignmentWeek1","students_D.xlsx")
