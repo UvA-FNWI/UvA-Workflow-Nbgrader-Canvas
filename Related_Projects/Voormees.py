@@ -25,7 +25,7 @@ from IPython.display import Javascript, Markdown, display, clear_output
 from ipywidgets import (Button, Layout, fixed, interact, interact_manual,
                         interactive, widgets)
 from nbgrader.apps import NbGraderAPI
-from tqdm.notebook import tqdm  # Progress bar
+from tqdm import tqdm  # Progress bar
 from traitlets.config import Config
 warnings.filterwarnings('ignore')
 
@@ -46,12 +46,12 @@ def get_assignment_obj(assignment_name):
         for assignment in canvas_course.get_assignments()
     }[assignment_name]
 
-def download_files(assignment_file,file_with_students):
+def download_files(assignment_name,file_with_students):
         """Downloads all the files from Canvas for an assignment
         If none were found on Canvas, uses zip collect in the download folder"""
-        list_of_students_in_section = pd.read_excel(file_with_students)['UvAnetID'].to_list()
+        list_of_students_in_section = pd.read_excel(file_with_students,dtype=str)['UvAnetID'].to_list()
         if canvas_course is not None:
-            if canvas_name in [
+            if assignment_name in [
                     assignment.name
                     for assignment in canvas_course.get_assignments()
             ]:
@@ -59,7 +59,7 @@ def download_files(assignment_file,file_with_students):
                 student_dict = get_student_ids()
 
                 # Get the Canvas assignment id
-                assignment = get_assignment_obj(canvas_name)
+                assignment = get_assignment_obj(assignment_name)
                 groups = []
 
                 for submission in tqdm(
@@ -74,18 +74,20 @@ def download_files(assignment_file,file_with_students):
                     # Check if submission has attachments
                     if 'attachments' not in submission.attributes:
                         continue
-                        
+      
                     # Download file and give correct name
                     student_id = student_dict[submission.user_id]
-                    if student_id
+                    if student_id not in list_of_students_in_section:
+                        continue
+
                     attachment = submission.attributes["attachments"][0]
 
                     directory = "submitted/%s/%s/" % (student_id,
-                                                      assignment_folder)
+                                                      assignment_name)
                     if not os.path.exists(directory):
                         os.makedirs(directory)
 
-                    filename = assignment_file + ".ipynb"
+                    filename = assignment_name + ".ipynb"
                     urllib.request.urlretrieve(attachment['url'],
                                                directory + filename)
                     
@@ -94,4 +96,4 @@ def download_files(assignment_file,file_with_students):
         else:
             print("No assignment found on Canvas")
             
-download_files("AssignmentWeek1","students_D.xlsx")
+download_files("AssignmentWeek1","students_A.xlsx")
