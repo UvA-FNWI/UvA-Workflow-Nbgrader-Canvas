@@ -7,6 +7,7 @@ How to install and use?
 Place Workflow.ipynb and workflow.json in the nbgrader folder.
 
 In case you don't see the widget buttons, please enable the widgets in jupyter:
+
  `jupyter nbextension enable --py widgetsnbextension`
 
 # Workflow.json (Config file)
