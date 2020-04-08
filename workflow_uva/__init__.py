@@ -630,7 +630,7 @@ class Course:
         """Returns a list of graded submissions"""
         return [
             x['name'] for x in self.nbgrader_api.get_assignments()
-            if x['num_submissions'] > 0
+            if x['num_submissions'] > 0 and self.nbgrader_api.gradebook.find_assignment(x['name']).num_submissions >0
         ]
 
     def create_results_per_question(self):
@@ -681,7 +681,6 @@ class Course:
         
         if assignment.num_submissions == 0:
             return None
-        
         # Set default values
         abs_max = assignment.max_score
         max_score = abs_max
@@ -861,6 +860,9 @@ class Course:
         return df
 
     def visualize_overview(self):
+        if self.sequence == []:
+            print("No sequence found, please change in workflow.json")
+            return None
         df = self.total_df()
         overviewdf = self.create_overview(df)
         if df is None:
